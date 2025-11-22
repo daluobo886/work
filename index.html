@@ -269,7 +269,7 @@ function calcEmployeeContrib(p){
   return social + housing;
 }
 function calcEmployerBenefit(p){
-  return p.socialBase * (p.pensionEmployerRate + p.medicalEmployerRate + p.unemploymentEmployerRate) + p.housingBase * p.housingEmployerRate;
+  return p.housingBase * p.housingEmployerRate;
 }
 function calcHousingFundValue(p){
   return p.housingBase * (p.housingEmployeeRate + p.housingEmployerRate);
@@ -364,16 +364,15 @@ function buildTimeline(s, p, horizon=24){
     else gross = 0;
 
     const net = calcAfterTaxIncome(p, gross);
-    const employerBenefit = calcEmployerBenefit(p) + (gross>0? p.housingBase*p.housingEmployeeRate:0);
-    const livingCost = p.expectedReemploymentIncome;
+    const employerBenefit = gross>0 ? calcEmployerBenefit(p) : 0;
     const selfPay = (gross===0 && p.keepSocialSecurityDuringUnemployment)? p.selfSocialSecurityCostPerMonth : 0;
     const oppCost = (gross===0? p.unemploymentOpportunityCostFactor * p.expectedReemploymentIncome:0);
     let lump = 0;
     if(s.arbitrationDurationMonths && m===s.arbitrationDurationMonths) lump = arbitrationPayout * s.probUseArbitration;
 
-    const disposable = net + employerBenefit + lump - livingCost - selfPay - oppCost;
+    const disposable = net + employerBenefit + lump - selfPay - oppCost;
     const disc = 1/Math.pow(1+monthlyRate, m-1);
-    rows.push({month:m,gross,net,employerBenefit,livingCost,selfPay,oppCost,lump,disposable,discounted:disposable*disc});
+    rows.push({month:m,gross,net,employerBenefit,selfPay,oppCost,lump,disposable,discounted:disposable*disc});
   }
   return rows;
 }
@@ -563,9 +562,10 @@ function renderCharts(summaries){
     timeline.reduce((a,b)=>a+b.net,0),
     timeline.reduce((a,b)=>a+b.employerBenefit,0),
     timeline.reduce((a,b)=>a+b.lump,0),
-    -timeline.reduce((a,b)=>a+b.livingCost+b.selfPay+b.oppCost,0)
+    -timeline.reduce((a,b)=>a+b.selfPay,0),
+    -timeline.reduce((a,b)=>a+b.oppCost,0)
   ];
-  drawBarChart(document.getElementById('chartPayoff'), payoffParts, ['净薪资','社保公积金','仲裁补偿','生活/成本'], {title:'现金流构成', colors:['#2c7be5','#5cc9a7','#f0b429','#c0392b']});
+  drawBarChart(document.getElementById('chartPayoff'), payoffParts, ['净薪资','雇主公积金','仲裁补偿','自付社保','机会成本'], {title:'现金流构成', colors:['#2c7be5','#5cc9a7','#f0b429','#c0392b','#7f8c8d']});
 
   const heatMatrix = [
     [ -2,-1,0,1,2,3 ],
