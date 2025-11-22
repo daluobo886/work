@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>劳动解约模型 - 单页DCF分析</title>
+<style>
+  :root {
+    --bg: #f7f8fb;
+    --panel: #ffffff;
+    --primary: #2c7be5;
+    --accent: #5cc9a7;
+    --text: #1f2933;
+    --muted: #6b778c;
+    --border: #e0e6ed;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    background: linear-gradient(90deg, #2c7be5, #4f8df3);
+    color: #fff;
+    padding: 16px 24px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+  }
+  header h1 { margin: 0; font-size: 22px; }
+  header p { margin: 4px 0 0; color: #e8f1ff; }
+  main { display: grid; grid-template-columns: 360px 1fr; min-height: calc(100vh - 90px); }
+  aside {
+    border-right: 1px solid var(--border);
+    background: #fff;
+    overflow-y: auto;
+    padding: 12px 10px 24px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 12px 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+  }
+  .panel h3 { margin: 0 0 8px; font-size: 14px; letter-spacing: 0.3px; }
+  label { display: flex; align-items: center; justify-content: space-between; font-size: 12px; margin: 6px 0; color: var(--muted); }
+  label span { flex: 1; margin-right: 6px; }
+  input, select { width: 140px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+  input[type="checkbox"] { width: auto; }
+  .tooltip { cursor: help; color: var(--primary); margin-left: 4px; }
+  .content { padding: 14px 18px; overflow-y: auto; }
+  .section-title { display: flex; align-items: center; justify-content: space-between; margin: 8px 0 6px; }
+  .section-title h2 { margin: 0; font-size: 18px; }
+  .btn { background: var(--primary); color: #fff; border: none; border-radius: 6px; padding: 8px 12px; cursor: pointer; font-size: 12px; }
+  .btn.secondary { background: #fff; border: 1px solid var(--border); color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  th, td { border: 1px solid var(--border); padding: 6px 8px; text-align: right; }
+  th { background: #f1f4f8; color: #4a5666; }
+  td:first-child, th:first-child { text-align: left; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  canvas { background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+  .highlight { background: #e8f5ff; }
+  .badge { padding: 2px 6px; border-radius: 4px; background: #e1f3ed; color: #2c7a63; font-weight: 600; font-size: 10px; }
+  .flex { display: flex; gap: 8px; align-items: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>劳动解约 DCF / 风险分析仪表盘</h1>
+  <p>输入参数 → 场景假设 → DCF、风险与压力测试 → 可视化</p>
+</header>
+<main>
+  <aside id="inputPanel">
+    <div class="panel" id="personalPanel">
+      <h3>1. 个人与工龄</h3>
+      <label><span>所在城市</span><input id="currentCity" value="北京"><i class="tooltip" title="当前工作城市">?</i></label>
+      <label><span>当前雇主</span><input id="currentEmployer" value="嘉玉禾"><i class="tooltip" title="公司名称">?</i></label>
+      <label><span>入职日期</span><input id="entryDate" type="date" value="2014-08-01"><i class="tooltip" title="合同开始">?</i></label>
+      <label><span>离职日期</span><input id="exitDate" type="date" value="2026-01-01"><i class="tooltip" title="假设离职时间">?</i></label>
+      <label><span>工龄(年)</span><input id="tenureYears" type="number" value="12"><i class="tooltip" title="计算N的年数">?</i></label>
+      <label><span>合同类型</span><select id="contractType"><option>固定期限</option><option selected>无固定期限</option></select><i class="tooltip" title="劳动合同类型">?</i></label>
+    </div>
+    <div class="panel" id="incomePanel">
+      <h3>2. 收入</h3>
+      <label><span>税前月薪</span><input id="monthlyGrossSalary" type="number" value="30300"><i class="tooltip" title="含固定工资">?</i></label>
+      <label><span>平滑月度奖金</span><input id="monthlyBonusSmoothed" type="number" value="0"><i class="tooltip" title="平均化的奖金">?</i></label>
+      <label><span>降薪比例</span><input id="salaryCutRatio" type="number" step="0.01" value="0.5"><i class="tooltip" title="降薪期间支付比例">?</i></label>
+      <label><span>待岗支付比例</span><input id="standbyRatio" type="number" step="0.001" value="0.065"><i class="tooltip" title="待岗期间的工资比例">?</i></label>
+    </div>
+    <div class="panel" id="socialPanel">
+      <h3>3. 五险一金</h3>
+      <label><span>社保基数</span><input id="socialBase" type="number" value="30300"><i class="tooltip" title="养老/医疗/失业计提基数">?</i></label>
+      <label><span>养老(个人)</span><input id="pensionEmployeeRate" type="number" step="0.001" value="0.08"><i class="tooltip" title="养老个人比例">?</i></label>
+      <label><span>养老(公司)</span><input id="pensionEmployerRate" type="number" step="0.001" value="0.16"><i class="tooltip" title="养老公司比例">?</i></label>
+      <label><span>医疗(个人)</span><input id="medicalEmployeeRate" type="number" step="0.001" value="0.02"><i class="tooltip" title="医疗个人比例">?</i></label>
+      <label><span>医疗(公司)</span><input id="medicalEmployerRate" type="number" step="0.001" value="0.10"><i class="tooltip" title="医疗公司比例">?</i></label>
+      <label><span>失业(个人)</span><input id="unemploymentEmployeeRate" type="number" step="0.0001" value="0.002"><i class="tooltip" title="失业个人比例">?</i></label>
+      <label><span>失业(公司)</span><input id="unemploymentEmployerRate" type="number" step="0.0001" value="0.008"><i class="tooltip" title="失业公司比例">?</i></label>
+      <label><span>公积金基数</span><input id="housingBase" type="number" value="30300"><i class="tooltip" title="公积金计提基数">?</i></label>
+      <label><span>公积金(个人)</span><input id="housingEmployeeRate" type="number" step="0.01" value="0.12"><i class="tooltip" title="个人缴存比例">?</i></label>
+      <label><span>公积金(公司)</span><input id="housingEmployerRate" type="number" step="0.01" value="0.12"><i class="tooltip" title="公司缴存比例">?</i></label>
+    </div>
+    <div class="panel" id="taxPanel">
+      <h3>4. 个税与扣除</h3>
+      <label><span>基本减除</span><input id="standardDeduction" type="number" value="5000"><i class="tooltip" title="个税基本减除额">?</i></label>
+      <label><span>专项附加</span><input id="specialDeduction" type="number" value="4000"><i class="tooltip" title="专项附加扣除">?</i></label>
+      <label><span>其他税前扣除</span><input id="otherPreTaxDeduction" type="number" value="0"><i class="tooltip" title="补充扣除">?</i></label>
+      <label><span>有效税率</span><input id="approxEffectiveTaxRate" type="number" step="0.01" value="0.2"><i class="tooltip" title="简化后的平均税率">?</i></label>
+    </div>
+    <div class="panel" id="legalPanel">
+      <h3>5. 法律/补偿</h3>
+      <label><span>N工龄(年)</span><input id="N_years" type="number" value="12"><i class="tooltip" title="用于N的年数">?</i></label>
+      <label><span>N基数(元)</span><input id="N_baseSalary" type="number" value="30300"><i class="tooltip" title="通常为月薪">?</i></label>
+      <label><span>N封顶倍数</span><input id="N_legalCapMultiple" type="number" value="12"><i class="tooltip" title="法定封顶月数">?</i></label>
+      <label><span>有2N情形</span><input id="hasTwoNCase" type="checkbox" checked><i class="tooltip" title="是否可能获2N">?</i></label>
+      <label><span>2N封顶倍数</span><input id="twoN_maxMultiple" type="number" value="24"><i class="tooltip" title="2N上限(默认2×min(N,封顶))">?</i></label>
+      <label><span>无30天提前义务</span><input id="noAdvance30DaysObligation" type="checkbox"><i class="tooltip" title="是否豁免提前告知">?</i></label>
+    </div>
+    <div class="panel" id="unempPanel">
+      <h3>6. 失业与生活</h3>
+      <label><span>预计在岗月数</span><input id="expectedInJobMonths" type="number" value="8"><i class="tooltip" title="继续发薪的月数">?</i></label>
+      <label><span>再就业收入</span><input id="expectedReemploymentIncome" type="number" value="15000"><i class="tooltip" title="基准生活费用">?</i></label>
+      <label><span>失业期间续保</span><input id="keepSocialSecurityDuringUnemployment" type="checkbox" checked><i class="tooltip" title="失业后自行缴纳社保">?</i></label>
+      <label><span>自行缴社保/月</span><input id="selfSocialSecurityCostPerMonth" type="number" value="2000"><i class="tooltip" title="断缴成本">?</i></label>
+      <label><span>机会成本系数</span><input id="unemploymentOpportunityCostFactor" type="number" step="0.01" value="0.2"><i class="tooltip" title="失业机会成本">?</i></label>
+    </div>
+    <div class="panel" id="probPanel">
+      <h3>7. 概率与贴现</h3>
+      <label><span>p(2N)</span><input id="p_2N_full" type="number" step="0.01" value="0.05"><i class="tooltip" title="2N概率">?</i></label>
+      <label><span>p(1N)</span><input id="p_1N_full" type="number" step="0.01" value="0.45"><i class="tooltip" title="1N概率">?</i></label>
+      <label><span>p(7-9N)</span><input id="p_mid_7to9N" type="number" step="0.01" value="0.3"><i class="tooltip" title="中档赔付概率">?</i></label>
+      <label><span>p(4-6N)</span><input id="p_low_4to6N" type="number" step="0.01" value="0.15"><i class="tooltip" title="低赔付概率">?</i></label>
+      <label><span>p(0)</span><input id="p_zero" type="number" step="0.01" value="0.05"><i class="tooltip" title="败诉概率">?</i></label>
+      <label><span>执行100%</span><input id="p_exec_100" type="number" step="0.01" value="0.4"><i class="tooltip" title="执行全额概率">?</i></label>
+      <label><span>执行75%</span><input id="p_exec_75" type="number" step="0.01" value="0.1"><i class="tooltip" title="执行75%概率">?</i></label>
+      <label><span>执行50%</span><input id="p_exec_50" type="number" step="0.01" value="0.15"><i class="tooltip" title="执行一半概率">?</i></label>
+      <label><span>执行25%</span><input id="p_exec_25" type="number" step="0.01" value="0.3"><i class="tooltip" title="低执行概率">?</i></label>
+      <label><span>执行0</span><input id="p_exec_0" type="number" step="0.01" value="0.05"><i class="tooltip" title="执行失败概率">?</i></label>
+      <label><span>年贴现率</span><input id="discountRateAnnual" type="number" step="0.01" value="0.2"><i class="tooltip" title="年化折现">?</i></label>
+      <label><span>时间步(月)</span><input id="timeStepMonths" type="number" value="1"><i class="tooltip" title="现金流步长">?</i></label>
+      <label><span>风险厌恶λ</span><input id="riskAversionLambda" type="number" step="0.00001" value="0.00001"><i class="tooltip" title="指数效用函数参数">?</i></label>
+    </div>
+    <div class="panel" id="managerPanel">
+      <h3>8. 管理人约束</h3>
+      <label><span>管理员最大成本</span><input id="managerMaxCost" type="number" value="250000"><i class="tooltip" title="HR/管理层可接受成本">?</i></label>
+      <label><span>可支付月数</span><input id="managerMaxMonthsPay" type="number" value="5"><i class="tooltip" title="继续支付薪资上限">?</i></label>
+    </div>
+  </aside>
+  <div class="content">
+    <div class="section-title">
+      <h2>场景设定与DCF</h2>
+      <div class="flex">
+        <button class="btn" id="addScenario">新增场景</button>
+        <button class="btn secondary" id="recalcBtn">重新计算</button>
+      </div>
+    </div>
+    <div class="panel">
+      <table id="scenarioTable">
+        <thead>
+          <tr>
+            <th>场景</th><th>描述</th><th>全薪月</th><th>降薪比</th><th>降薪月</th><th>待岗/月</th><th>待岗月</th><th>额外N</th><th>仲裁月</th><th>仲裁概率</th><th>支持度</th><th>执行率</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <h3>场景汇总 (NPV / EV / CE)</h3>
+      <table id="summaryTable">
+        <thead><tr><th>场景</th><th>NPV</th><th>总现金流</th><th>期限(月)</th><th>EV</th><th>CE</th><th>风险溢价</th><th>负现金流月</th><th>首次破产月</th><th>管理员可行?</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="section-title">
+      <h2>可视化与分析</h2>
+      <select id="scenarioSelect"></select>
+    </div>
+    <div class="grid" id="chartsGrid">
+      <canvas id="chartNPV" width="450" height="260"></canvas>
+      <canvas id="chartPayoff" width="450" height="260"></canvas>
+      <canvas id="chartCashflow" width="450" height="260"></canvas>
+      <canvas id="chartCumulative" width="450" height="260"></canvas>
+      <canvas id="chartHeat" width="450" height="260"></canvas>
+      <canvas id="chartTornado" width="450" height="260"></canvas>
+      <canvas id="chartHistogram" width="450" height="260"></canvas>
+      <canvas id="chartQuantiles" width="450" height="260"></canvas>
+      <canvas id="chartNegative" width="450" height="260"></canvas>
+      <canvas id="chartTimeline" width="450" height="260"></canvas>
+      <canvas id="chartScatter" width="450" height="260"></canvas>
+    </div>
+  </div>
+</main>
+<script>
+const params = {};
+let scenarios = [];
+let monteCarloResults = {};
+
+function defaultParams(){
+  return {
+    currentCity: '北京',
+    currentEmployer: '嘉玉禾',
+    entryDate: '2014-08-01',
+    exitDate: '2026-01-01',
+    tenureYears: 12,
+    contractType: '无固定期限',
+    monthlyGrossSalary: 30300,
+    monthlyBonusSmoothed: 0,
+    salaryCutRatio: 0.5,
+    standbyRatio: 0.065,
+    socialBase: 30300,
+    pensionEmployeeRate: 0.08,
+    pensionEmployerRate: 0.16,
+    medicalEmployeeRate: 0.02,
+    medicalEmployerRate: 0.10,
+    unemploymentEmployeeRate: 0.002,
+    unemploymentEmployerRate: 0.008,
+    housingBase: 30300,
+    housingEmployeeRate: 0.12,
+    housingEmployerRate: 0.12,
+    standardDeduction: 5000,
+    specialDeduction: 4000,
+    otherPreTaxDeduction: 0,
+    approxEffectiveTaxRate: 0.2,
+    N_years: 12,
+    N_baseSalary: 30300,
+    N_legalCapMultiple: 12,
+    hasTwoNCase: true,
+    twoN_maxMultiple: 24,
+    noAdvance30DaysObligation: false,
+    expectedInJobMonths: 8,
+    expectedReemploymentIncome: 15000,
+    keepSocialSecurityDuringUnemployment: true,
+    selfSocialSecurityCostPerMonth: 2000,
+    unemploymentOpportunityCostFactor: 0.2,
+    p_2N_full: 0.05,
+    p_1N_full: 0.45,
+    p_mid_7to9N: 0.3,
+    p_low_4to6N: 0.15,
+    p_zero: 0.05,
+    p_exec_100: 0.4,
+    p_exec_75: 0.1,
+    p_exec_50: 0.15,
+    p_exec_25: 0.3,
+    p_exec_0: 0.05,
+    discountRateAnnual: 0.2,
+    timeStepMonths: 1,
+    riskAversionLambda: 0.00001,
+    managerMaxCost: 250000,
+    managerMaxMonthsPay: 5,
+  };
+}
+
+function readParams(){
+  const p = defaultParams();
+  Object.keys(p).forEach(k=>{
+    const el = document.getElementById(k);
+    if(!el) return;
+    if(el.type === 'checkbox') p[k] = el.checked;
+    else if(el.type === 'number') p[k] = parseFloat(el.value)||0;
+    else p[k] = el.value;
+  });
+  Object.assign(params, p);
+}
+
+function calcEmployeeContrib(p){
+  const social = p.socialBase * (p.pensionEmployeeRate + p.medicalEmployeeRate + p.unemploymentEmployeeRate);
+  const housing = p.housingBase * p.housingEmployeeRate;
+  return social + housing;
+}
+function calcEmployerBenefit(p){
+  return p.socialBase * (p.pensionEmployerRate + p.medicalEmployerRate + p.unemploymentEmployerRate) + p.housingBase * p.housingEmployerRate;
+}
+function calcHousingFundValue(p){
+  return p.housingBase * (p.housingEmployeeRate + p.housingEmployerRate);
+}
+function calcAfterTaxIncome(p, gross){
+  const bonus = p.monthlyBonusSmoothed || 0;
+  const contrib = calcEmployeeContrib(p);
+  const taxable = Math.max(0, gross + bonus - contrib - p.standardDeduction - p.specialDeduction - p.otherPreTaxDeduction);
+  const tax = taxable * p.approxEffectiveTaxRate;
+  return gross + bonus - contrib - tax;
+}
+function discountFactor(p, monthIndex){
+  const monthlyRate = Math.pow(1 + p.discountRateAnnual, p.timeStepMonths/12) - 1;
+  return 1 / Math.pow(1 + monthlyRate, monthIndex - 1);
+}
+function expectedExecutionFactor(p){
+  return p.p_exec_100*1 + p.p_exec_75*0.75 + p.p_exec_50*0.5 + p.p_exec_25*0.25 + p.p_exec_0*0;
+}
+function outcomeMultipliers(p){
+  return [
+    {prob:p.p_2N_full, mult:2},
+    {prob:p.p_1N_full, mult:1},
+    {prob:p.p_mid_7to9N, mult:0.8},
+    {prob:p.p_low_4to6N, mult:0.5},
+    {prob:p.p_zero, mult:0}
+  ];
+}
+function baseNValue(p){
+  const baseMonths = Math.min(p.N_years, p.N_legalCapMultiple);
+  return baseMonths * p.N_baseSalary;
+}
+
+function defaultScenarios(){
+  const p = defaultParams();
+  return [
+    {id:'S1', name:'3月全薪后主动离职', fullSalaryMonths:3, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:2, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:3, arbitrationExtraN:0, arbitrationDurationMonths:6, probUseArbitration:0.2, arbitrationWinFactor:0.9, executionSuccessRate:expectedExecutionFactor(p)},
+    {id:'S2', name:'立即仲裁争取2N', fullSalaryMonths:2, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:4, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:2, arbitrationExtraN:0.8, arbitrationDurationMonths:8, probUseArbitration:0.8, arbitrationWinFactor:1, executionSuccessRate:expectedExecutionFactor(p)},
+    {id:'S3', name:'长时间待岗+仲裁', fullSalaryMonths:1, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:3, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:8, arbitrationExtraN:0.4, arbitrationDurationMonths:10, probUseArbitration:0.7, arbitrationWinFactor:0.8, executionSuccessRate:expectedExecutionFactor(p)},
+    {id:'S4', name:'全薪5月后和平离职', fullSalaryMonths:5, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationExtraN:0, arbitrationDurationMonths:0, probUseArbitration:0.05, arbitrationWinFactor:0.5, executionSuccessRate:expectedExecutionFactor(p)},
+    {id:'S5', name:'降薪+短待岗+仲裁', fullSalaryMonths:2, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:6, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:2, arbitrationExtraN:0.5, arbitrationDurationMonths:7, probUseArbitration:0.6, arbitrationWinFactor:0.85, executionSuccessRate:expectedExecutionFactor(p)},
+    {id:'S6', name:'快速和解支付1N', fullSalaryMonths:1, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:1, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:1, arbitrationExtraN:0.1, arbitrationDurationMonths:4, probUseArbitration:0.3, arbitrationWinFactor:0.6, executionSuccessRate:expectedExecutionFactor(p)}
+  ];
+}
+
+function renderScenarioTable(){
+  const tbody = document.querySelector('#scenarioTable tbody');
+  tbody.innerHTML = '';
+  scenarios.forEach((s, idx)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${s.id}</td>
+      <td contenteditable data-key="name">${s.name}</td>
+      <td contenteditable data-key="fullSalaryMonths">${s.fullSalaryMonths}</td>
+      <td contenteditable data-key="salaryCutRatio">${s.salaryCutRatio}</td>
+      <td contenteditable data-key="salaryCutMonths">${s.salaryCutMonths}</td>
+      <td contenteditable data-key="standbyMonthlyPay">${s.standbyMonthlyPay.toFixed(0)}</td>
+      <td contenteditable data-key="standbyMonths">${s.standbyMonths}</td>
+      <td contenteditable data-key="arbitrationExtraN">${s.arbitrationExtraN}</td>
+      <td contenteditable data-key="arbitrationDurationMonths">${s.arbitrationDurationMonths}</td>
+      <td contenteditable data-key="probUseArbitration">${s.probUseArbitration}</td>
+      <td contenteditable data-key="arbitrationWinFactor">${s.arbitrationWinFactor}</td>
+      <td contenteditable data-key="executionSuccessRate">${s.executionSuccessRate}</td>
+    `;
+    tr.querySelectorAll('[contenteditable]').forEach(cell=>{
+      cell.addEventListener('blur', (e)=>{
+        const key = e.target.dataset.key;
+        const val = key==='name'? e.target.textContent : parseFloat(e.target.textContent)||0;
+        s[key] = val;
+        updateAll();
+      });
+    });
+    tbody.appendChild(tr);
+  });
+  const select = document.getElementById('scenarioSelect');
+  select.innerHTML = scenarios.map(s=>`<option value="${s.id}">${s.id}-${s.name}</option>`).join('');
+}
+
+function buildTimeline(s, p, horizon=24){
+  const rows = [];
+  let cumulativeMonths = 0;
+  const monthlyRate = Math.pow(1+p.discountRateAnnual, p.timeStepMonths/12) -1;
+  const execFactor = s.executionSuccessRate || expectedExecutionFactor(p);
+  const baseN = baseNValue(p);
+  const expectedMult = outcomeMultipliers(p).reduce((sum,o)=>sum+o.prob*o.mult,0);
+  const arbitrationPayout = baseN * (1 + s.arbitrationExtraN) * (s.arbitrationWinFactor||1) * expectedMult * execFactor;
+
+  for(let m=1;m<=horizon;m++){
+    let gross=0;
+    if(m<=s.fullSalaryMonths) gross = p.monthlyGrossSalary;
+    else if(m<=s.fullSalaryMonths + s.salaryCutMonths) gross = p.monthlyGrossSalary * s.salaryCutRatio;
+    else if(m<=s.fullSalaryMonths + s.salaryCutMonths + s.standbyMonths) gross = s.standbyMonthlyPay;
+    else gross = 0;
+
+    const net = calcAfterTaxIncome(p, gross);
+    const employerBenefit = calcEmployerBenefit(p) + (gross>0? p.housingBase*p.housingEmployeeRate:0);
+    const livingCost = p.expectedReemploymentIncome;
+    const selfPay = (gross===0 && p.keepSocialSecurityDuringUnemployment)? p.selfSocialSecurityCostPerMonth : 0;
+    const oppCost = (gross===0? p.unemploymentOpportunityCostFactor * p.expectedReemploymentIncome:0);
+    let lump = 0;
+    if(s.arbitrationDurationMonths && m===s.arbitrationDurationMonths) lump = arbitrationPayout * s.probUseArbitration;
+
+    const disposable = net + employerBenefit + lump - livingCost - selfPay - oppCost;
+    const disc = 1/Math.pow(1+monthlyRate, m-1);
+    rows.push({month:m,gross,net,employerBenefit,livingCost,selfPay,oppCost,lump,disposable,discounted:disposable*disc});
+  }
+  return rows;
+}
+
+function summarizeScenario(s,p){
+  const rows = buildTimeline(s,p,24);
+  const totalCash = rows.reduce((a,b)=>a+b.disposable,0);
+  const npv = rows.reduce((a,b)=>a+b.discounted,0);
+  const duration = totalCash!==0 ? rows.reduce((a,b)=>a+b.month*b.disposable,0)/totalCash : 0;
+  const negatives = rows.filter(r=>r.disposable<0).length;
+  const firstNegative = rows.find(r=>r.disposable<0)?.month || '-';
+  const payMonths = s.fullSalaryMonths + s.salaryCutMonths + s.standbyMonths;
+  const feasible = (npv<=p.managerMaxCost) && (payMonths<=p.managerMaxMonthsPay);
+
+  const baseN = baseNValue(p);
+  const execFactor = s.executionSuccessRate || expectedExecutionFactor(p);
+  const outcomes = outcomeMultipliers(p).map(o=>({prob:o.prob, value: baseN*(1+s.arbitrationExtraN)*o.mult*execFactor*s.arbitrationWinFactor}));
+  const EV = outcomes.reduce((a,b)=>a+b.prob*b.value,0);
+  const variance = outcomes.reduce((a,b)=>a+b.prob*Math.pow(b.value-EV,2),0);
+  const std = Math.sqrt(variance);
+  const sorted = outcomes.flatMap(o=>[{prob:o.prob, value:o.value}]).sort((a,b)=>a.value-b.value);
+  let c=0,VaR=0,CVaR=0,sumCV=0,countCV=0;
+  for(const o of sorted){
+    c+=o.prob; if(VaR===0 && c>=0.05){VaR=o.value;}
+    if(c<=0.05){sumCV+=o.value*o.prob;countCV+=o.prob;}
+  }
+  CVaR = countCV>0? sumCV/countCV : 0;
+  const lambda = p.riskAversionLambda || 0.00001;
+  const EU = outcomes.reduce((a,b)=>a + b.prob * (-Math.exp(-lambda*b.value)),0);
+  const CE = -Math.log(-EU)/lambda;
+  const riskPremium = EV - CE;
+
+  const survivalMin = Math.min(...rows.map(r=>r.net + r.employerBenefit + r.lump - r.selfPay - r.oppCost));
+  const maxLiving = survivalMin;
+
+  return {rows,totalCash,npv,duration,EV,std,VaR,CVaR,CE,riskPremium,negatives,firstNegative,feasible,maxLiving};
+}
+
+function renderSummary(){
+  const tbody = document.querySelector('#summaryTable tbody');
+  tbody.innerHTML = '';
+  let bestNPV = -Infinity, bestCE = -Infinity, bestCash = Infinity; // cash risk
+  let bestNPVId=null, bestCEId=null, bestSafeId=null;
+  const summaries = scenarios.map(s=>({s, summary:summarizeScenario(s, params)}));
+  summaries.forEach(({s,summary})=>{
+    if(summary.npv>bestNPV){bestNPV=summary.npv; bestNPVId=s.id;}
+    if(summary.CE>bestCE){bestCE=summary.CE; bestCEId=s.id;}
+    if(summary.negatives<bestCash){bestCash=summary.negatives; bestSafeId=s.id;}
+  });
+  summaries.forEach(({s,summary})=>{
+    const tr = document.createElement('tr');
+    if(s.id===bestNPVId || s.id===bestCEId || s.id===bestSafeId) tr.classList.add('highlight');
+    tr.innerHTML = `
+      <td>${s.id}</td>
+      <td>${summary.npv.toFixed(0)}</td>
+      <td>${summary.totalCash.toFixed(0)}</td>
+      <td>${summary.duration.toFixed(1)}</td>
+      <td>${summary.EV.toFixed(0)}</td>
+      <td>${summary.CE.toFixed(0)}</td>
+      <td>${summary.riskPremium.toFixed(0)}</td>
+      <td>${summary.negatives}</td>
+      <td>${summary.firstNegative}</td>
+      <td>${summary.feasible?'<span class="badge">可行</span>':'<span class="badge" style="background:#fdecea;color:#c0392b;">警告</span>'}</td>`;
+    tbody.appendChild(tr);
+  });
+  renderCharts(summaries);
+}
+
+function addScenario(){
+  const idx = scenarios.length+1;
+  scenarios.push({id:`S${idx}`, name:`新场景${idx}`, fullSalaryMonths:2, salaryCutRatio:params.salaryCutRatio, salaryCutMonths:2, standbyMonthlyPay:params.monthlyGrossSalary*params.standbyRatio, standbyMonths:2, arbitrationExtraN:0, arbitrationDurationMonths:6, probUseArbitration:0.5, arbitrationWinFactor:0.8, executionSuccessRate:expectedExecutionFactor(params)});
+  renderScenarioTable();
+  updateAll();
+}
+
+function drawAxes(ctx, w, h){
+  ctx.strokeStyle = '#d0d7e2';
+  ctx.beginPath(); ctx.moveTo(40,h-30); ctx.lineTo(w-10,h-30); ctx.lineTo(w-10,20); ctx.stroke();
+}
+function drawBarChart(canvas,data,labels,opts={}){
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawAxes(ctx, canvas.width, canvas.height);
+  const max = Math.max(...data,0);
+  const min = Math.min(...data,0);
+  const span = max-min || 1;
+  const barW = (canvas.width-80)/data.length;
+  data.forEach((v,i)=>{
+    const x = 50 + i*barW;
+    const y0 = canvas.height-30;
+    const y = y0 - (v-min)/span*(canvas.height-70);
+    ctx.fillStyle = opts.colors?opts.colors[i%opts.colors.length]: '#2c7be5';
+    ctx.fillRect(x, Math.min(y,y0), barW*0.6, Math.abs(y0-y));
+    ctx.fillStyle = '#555';
+    ctx.fillText(labels[i], x, canvas.height-12);
+    ctx.fillText(v.toFixed(0), x, y-4);
+  });
+  if(opts.title){ctx.fillStyle='#111'; ctx.font='12px sans-serif'; ctx.fillText(opts.title, 10,14); ctx.font='10px sans-serif';}
+}
+function drawLineChart(canvas, series, opts={}){
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawAxes(ctx, canvas.width, canvas.height);
+  const max=Math.max(...series.flatMap(s=>s.data),0);
+  const min=Math.min(...series.flatMap(s=>s.data),0);
+  const span=max-min||1;
+  const n=Math.max(...series.map(s=>s.data.length));
+  series.forEach((s,idx)=>{
+    ctx.beginPath();
+    ctx.strokeStyle=opts.colors?opts.colors[idx%opts.colors.length]:`hsl(${idx*60},70%,50%)`;
+    s.data.forEach((v,i)=>{
+      const x=50 + (canvas.width-80)*(i/(n-1||1));
+      const y=canvas.height-30 - (v-min)/span*(canvas.height-70);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    ctx.fillText(s.label, canvas.width-80, 20+idx*12);
+  });
+  if(opts.title){ctx.fillStyle='#111';ctx.fillText(opts.title,10,14);}
+}
+function drawHeatmap(canvas, matrix, xLabels, yLabels, opts={}){
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const rows = matrix.length, cols = matrix[0].length;
+  const cellW = (canvas.width-80)/cols; const cellH=(canvas.height-60)/rows;
+  matrix.forEach((r,ri)=>{
+    r.forEach((v,ci)=>{
+      const hue = 200 - 120*(v>0); // blue/green/red mix
+      const intensity = Math.min(1, Math.abs(v)/(opts.max||1));
+      const color = v>=0? `rgba(44,123,229,${0.2+0.6*intensity})`:`rgba(192,57,43,${0.2+0.6*intensity})`;
+      ctx.fillStyle=color;
+      const x=50+ci*cellW, y=20+ri*cellH;
+      ctx.fillRect(x,y,cellW-2,cellH-2);
+      ctx.fillStyle='#111'; ctx.fillText(v.toFixed(0), x+4, y+12);
+    });
+  });
+  xLabels.forEach((l,i)=>ctx.fillText(l, 50+i*cellW, canvas.height-8));
+  yLabels.forEach((l,i)=>ctx.fillText(l, 10, 28+i*cellH));
+  if(opts.title){ctx.fillStyle='#111';ctx.fillText(opts.title,10,14);}
+}
+function drawHistogram(canvas, data, opts={}){
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawAxes(ctx, canvas.width, canvas.height);
+  if(!data.length){ctx.fillText('无模拟结果',20,20);return;}
+  const bins=20; const min=Math.min(...data); const max=Math.max(...data); const span=max-min||1;
+  const counts=Array(bins).fill(0);
+  data.forEach(v=>{let idx=Math.floor((v-min)/span*bins); idx=Math.min(bins-1,Math.max(0,idx)); counts[idx]++;});
+  const barW=(canvas.width-80)/bins; const maxC=Math.max(...counts,1);
+  counts.forEach((c,i)=>{
+    const x=50+i*barW; const h=(canvas.height-70)*(c/maxC);
+    ctx.fillStyle='#2c7be5';
+    ctx.fillRect(x, canvas.height-30-h, barW*0.9, h);
+  });
+  ctx.fillStyle='#111'; ctx.fillText(opts.title||'直方图',10,14);
+}
+function drawTimeline(canvas, segments, horizon=24){
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const barH=30; const colors={'full':'#2c7be5','cut':'#7fb3ff','standby':'#f0b429','arbitration':'#5cc9a7','unemploy':'#dfe3ec'};
+  let x=40; const unit=(canvas.width-80)/horizon;
+  segments.forEach(seg=>{
+    ctx.fillStyle=colors[seg.type]||'#ccc';
+    ctx.fillRect(x,40,unit*seg.len,barH);
+    ctx.fillStyle='#111'; ctx.fillText(seg.label, x+2, 60);
+    x+=unit*seg.len;
+  });
+  ctx.strokeStyle='#aaa'; ctx.beginPath(); ctx.moveTo(40,40+barH+6); ctx.lineTo(canvas.width-40,40+barH+6); ctx.stroke();
+  ctx.fillText('时间轴(月)',10,20);
+}
+
+function renderCharts(summaries){
+  const labels = summaries.map(o=>o.s.id);
+  const npvs = summaries.map(o=>o.summary.npv);
+  drawBarChart(document.getElementById('chartNPV'), npvs, labels, {title:'场景NPV'});
+
+  const selId = document.getElementById('scenarioSelect').value || scenarios[0].id;
+  const selSummary = summaries.find(o=>o.s.id===selId) || summaries[0];
+  const timeline = selSummary.summary.rows;
+  const months = timeline.map(r=>`M${r.month}`);
+  const netData = timeline.map(r=>r.disposable);
+  drawLineChart(document.getElementById('chartCashflow'), [{label:'净现金流', data: netData}], {title:'月度净现金流'});
+  const cum = []; timeline.reduce((a,b)=>{const v=a+b.disposable; cum.push(v); return v;},0);
+  drawLineChart(document.getElementById('chartCumulative'), [{label:'累计', data:cum}], {title:'累计现金流'});
+
+  const payoffParts=[
+    timeline.reduce((a,b)=>a+b.net,0),
+    timeline.reduce((a,b)=>a+b.employerBenefit,0),
+    timeline.reduce((a,b)=>a+b.lump,0),
+    -timeline.reduce((a,b)=>a+b.livingCost+b.selfPay+b.oppCost,0)
+  ];
+  drawBarChart(document.getElementById('chartPayoff'), payoffParts, ['净薪资','社保公积金','仲裁补偿','生活/成本'], {title:'现金流构成', colors:['#2c7be5','#5cc9a7','#f0b429','#c0392b']});
+
+  const heatMatrix = [
+    [ -2,-1,0,1,2,3 ],
+    [ -1,-0.5,0,1,2,2.5 ],
+    [ -0.5,0,0.5,1.5,2,2.2 ],
+    [ -0.2,0.2,0.6,1,1.4,1.8 ],
+    [ -0.1,0.1,0.3,0.8,1.2,1.5 ]
+  ];
+  drawHeatmap(document.getElementById('chartHeat'), heatMatrix, ['0','4N','7N','9N','12N','2N'], ['执行0','25%','50%','75%','100%'], {title:'仲裁结果 vs 执行率', max:3});
+
+  const tornadoParams=['贴现率','法律胜率','执行率','再就业收入','管理员上限'];
+  const baseNPV = selSummary.summary.npv;
+  const shocks=[0.2,-0.2];
+  const change=tornadoParams.map((pname,i)=>{
+    const delta = (i%2===0? shocks[0]:shocks[1]);
+    return baseNPV*delta*0.4; // simplified sensitivity
+  });
+  drawBarChart(document.getElementById('chartTornado'), change, tornadoParams, {title:'敏感度龙卷风', colors:['#2c7be5','#f0b429','#c0392b','#5cc9a7','#7f8c8d']});
+
+  const mc = monteCarloResults[selId]||[];
+  drawHistogram(document.getElementById('chartHistogram'), mc, {title:'Monte Carlo NPV'});
+
+  const quantiles = summaries.map(o=>{
+    const arr = monteCarloResults[o.s.id]||[];
+    if(arr.length===0) return {id:o.s.id,q:[0,0,0,0,0]};
+    const sorted=[...arr].sort((a,b)=>a-b);
+    const q=p=>sorted[Math.floor(p*(sorted.length-1))];
+    return {id:o.s.id,q:[q(0.05),q(0.25),q(0.5),q(0.75),q(0.95)]};
+  });
+  const boxData = quantiles.flatMap((o)=> o.q.map(v=>v));
+  drawLineChart(document.getElementById('chartQuantiles'), quantiles.map(o=>({label:o.id,data:o.q})), {title:'情景分布对比'});
+
+  const negatives = summaries.map(o=>o.summary.negatives);
+  drawBarChart(document.getElementById('chartNegative'), negatives, labels, {title:'负现金流月数', colors:['#c0392b']});
+
+  const segs = [
+    {type:'full', len:selSummary.s.fullSalaryMonths, label:'全薪'},
+    {type:'cut', len:selSummary.s.salaryCutMonths, label:'降薪'},
+    {type:'standby', len:selSummary.s.standbyMonths, label:'待岗'},
+    {type:'arbitration', len:1, label:'仲裁'},
+    {type:'unemploy', len: Math.max(1, 24 - selSummary.s.fullSalaryMonths - selSummary.s.salaryCutMonths - selSummary.s.standbyMonths -1), label:'失业'}
+  ];
+  drawTimeline(document.getElementById('chartTimeline'), segs, 24);
+
+  const scatter = summaries.map(o=>({id:o.s.id, x:o.summary.std, y:o.summary.npv}));
+  const ctx = document.getElementById('chartScatter').getContext('2d');
+  const canvas = document.getElementById('chartScatter');
+  ctx.clearRect(0,0,canvas.width,canvas.height); drawAxes(ctx,canvas.width,canvas.height);
+  const maxX=Math.max(...scatter.map(p=>p.x),1); const maxY=Math.max(...scatter.map(p=>p.y),1);
+  scatter.forEach((pt,i)=>{
+    const x=50 + (canvas.width-80)*(pt.x/maxX);
+    const y=canvas.height-30 - (pt.y/maxY)*(canvas.height-70);
+    ctx.fillStyle=`hsl(${i*60},70%,50%)`; ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#111'; ctx.fillText(pt.id, x+6, y-6);
+  });
+  ctx.fillText('风险(标准差)',10,14);
+}
+
+function runMonteCarlo(s,p,sim=800){
+  const results=[];
+  const execDist=[{p:p.p_exec_0, v:0},{p:p.p_exec_25,v:0.25},{p:p.p_exec_50,v:0.5},{p:p.p_exec_75,v:0.75},{p:p.p_exec_100,v:1}];
+  const outcome=outcomeMultipliers(p);
+  function sampleDist(dist){
+    const r=Math.random(); let c=0; for(const d of dist){c+=d.p; if(r<=c) return d.v;}
+    return dist[dist.length-1].v;
+  }
+  for(let i=0;i<sim;i++){
+    const dr = Math.min(0.6, Math.max(0.01, p.discountRateAnnual + (Math.random()-0.5)*0.1));
+    const pClone = {...p, discountRateAnnual: dr};
+    const exec = sampleDist(execDist);
+    const om = sampleDist(outcome.map(o=>({p:o.prob,v:o.mult})));
+    const sClone = {...s, executionSuccessRate: exec, arbitrationWinFactor: s.arbitrationWinFactor};
+    const base = baseNValue(pClone);
+    const payout = base*(1+sClone.arbitrationExtraN)*om*exec*sClone.arbitrationWinFactor;
+    const rows = buildTimeline(sClone,pClone,24);
+    const npv = rows.reduce((a,b)=>a+b.discounted,0) + payout/Math.pow(1+dr/12, (s.arbitrationDurationMonths||1));
+    results.push(npv);
+  }
+  monteCarloResults[s.id]=results;
+}
+
+function updateAll(){
+  readParams();
+  scenarios.forEach(s=>{ s.standbyMonthlyPay = params.monthlyGrossSalary*params.standbyRatio; });
+  scenarios.forEach(s=>runMonteCarlo(s, params, 500));
+  renderSummary();
+}
+
+function initInputs(){
+  document.querySelectorAll('input,select').forEach(el=>{
+    el.addEventListener('change', ()=>updateAll());
+  });
+}
+
+function init(){
+  Object.assign(params, defaultParams());
+  scenarios = defaultScenarios();
+  renderScenarioTable();
+  initInputs();
+  document.getElementById('addScenario').onclick=addScenario;
+  document.getElementById('recalcBtn').onclick=updateAll;
+  document.getElementById('scenarioSelect').onchange=updateAll;
+  updateAll();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
