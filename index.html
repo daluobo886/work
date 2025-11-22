@@ -305,12 +305,12 @@ function baseNValue(p){
 function defaultScenarios(){
   const p = defaultParams();
   return [
-    {id:'S1', name:'3月全薪后主动离职', fullSalaryMonths:3, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:2, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:3, arbitrationExtraN:0, arbitrationDurationMonths:6, probUseArbitration:0.2, arbitrationWinFactor:0.9, executionSuccessRate:expectedExecutionFactor(p)},
-    {id:'S2', name:'立即仲裁争取2N', fullSalaryMonths:2, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:4, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:2, arbitrationExtraN:0.8, arbitrationDurationMonths:8, probUseArbitration:0.8, arbitrationWinFactor:1, executionSuccessRate:expectedExecutionFactor(p)},
-    {id:'S3', name:'长时间待岗+仲裁', fullSalaryMonths:1, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:3, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:8, arbitrationExtraN:0.4, arbitrationDurationMonths:10, probUseArbitration:0.7, arbitrationWinFactor:0.8, executionSuccessRate:expectedExecutionFactor(p)},
-    {id:'S4', name:'全薪5月后和平离职', fullSalaryMonths:5, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationExtraN:0, arbitrationDurationMonths:0, probUseArbitration:0.05, arbitrationWinFactor:0.5, executionSuccessRate:expectedExecutionFactor(p)},
-    {id:'S5', name:'降薪+短待岗+仲裁', fullSalaryMonths:2, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:6, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:2, arbitrationExtraN:0.5, arbitrationDurationMonths:7, probUseArbitration:0.6, arbitrationWinFactor:0.85, executionSuccessRate:expectedExecutionFactor(p)},
-    {id:'S6', name:'快速和解支付1N', fullSalaryMonths:1, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:1, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:1, arbitrationExtraN:0.1, arbitrationDurationMonths:4, probUseArbitration:0.3, arbitrationWinFactor:0.6, executionSuccessRate:expectedExecutionFactor(p)}
+    {id:'S1', name:'3月全薪主动离职', fullSalaryMonths:3, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:2, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:3, arbitrationExtraN:0, arbitrationDurationMonths:6, probUseArbitration:0.2, arbitrationWinFactor:0.9, executionSuccessRate:0.625},
+    {id:'S2', name:'4月全薪主动离职', fullSalaryMonths:4, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:2, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:2, arbitrationExtraN:0.8, arbitrationDurationMonths:8, probUseArbitration:0.8, arbitrationWinFactor:1, executionSuccessRate:0.5},
+    {id:'S3', name:'2月降薪+仲裁', fullSalaryMonths:2, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:3, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:8, arbitrationExtraN:0.4, arbitrationDurationMonths:10, probUseArbitration:0.7, arbitrationWinFactor:0.8, executionSuccessRate:0.5},
+    {id:'S4', name:'全薪5月后和平离职', fullSalaryMonths:5, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationExtraN:0, arbitrationDurationMonths:0, probUseArbitration:0.05, arbitrationWinFactor:0.5, executionSuccessRate:0.75},
+    {id:'S5', name:'6月降薪+6月待岗', fullSalaryMonths:4, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:6, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:2, arbitrationExtraN:0.5, arbitrationDurationMonths:7, probUseArbitration:0.6, arbitrationWinFactor:0.85, executionSuccessRate:0.5},
+    {id:'S6', name:'12个月待岗+1N和解', fullSalaryMonths:3, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:1, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:1, arbitrationExtraN:0.1, arbitrationDurationMonths:4, probUseArbitration:0.3, arbitrationWinFactor:0.6, executionSuccessRate:0.65}
   ];
 }
 
@@ -347,7 +347,14 @@ function renderScenarioTable(){
   select.innerHTML = scenarios.map(s=>`<option value="${s.id}">${s.id}-${s.name}</option>`).join('');
 }
 
-function buildTimeline(s, p, horizon=24){
+function scenarioHorizon(s, p){
+  const payMonths = s.fullSalaryMonths + s.salaryCutMonths + s.standbyMonths;
+  const arbitrationMonth = s.arbitrationDurationMonths || 0;
+  const expectedMonths = p.expectedInJobMonths || 0;
+  return Math.max(payMonths, arbitrationMonth, expectedMonths, 1);
+}
+
+function buildTimeline(s, p, horizon=scenarioHorizon(s, p)){
   const rows = [];
   let cumulativeMonths = 0;
   const monthlyRate = Math.pow(1+p.discountRateAnnual, p.timeStepMonths/12) -1;
@@ -378,7 +385,7 @@ function buildTimeline(s, p, horizon=24){
 }
 
 function summarizeScenario(s,p){
-  const rows = buildTimeline(s,p,24);
+  const rows = buildTimeline(s,p,scenarioHorizon(s,p));
   const totalCash = rows.reduce((a,b)=>a+b.disposable,0);
   const npv = rows.reduce((a,b)=>a+b.discounted,0);
   const duration = totalCash!==0 ? rows.reduce((a,b)=>a+b.month*b.disposable,0)/totalCash : 0;
@@ -606,9 +613,9 @@ function renderCharts(summaries){
     {type:'cut', len:selSummary.s.salaryCutMonths, label:'降薪'},
     {type:'standby', len:selSummary.s.standbyMonths, label:'待岗'},
     {type:'arbitration', len:1, label:'仲裁'},
-    {type:'unemploy', len: Math.max(1, 24 - selSummary.s.fullSalaryMonths - selSummary.s.salaryCutMonths - selSummary.s.standbyMonths -1), label:'失业'}
+    {type:'unemploy', len: Math.max(1, scenarioHorizon(selSummary.s, params) - selSummary.s.fullSalaryMonths - selSummary.s.salaryCutMonths - selSummary.s.standbyMonths -1), label:'失业'}
   ];
-  drawTimeline(document.getElementById('chartTimeline'), segs, 24);
+  drawTimeline(document.getElementById('chartTimeline'), segs, scenarioHorizon(selSummary.s, params));
 
   const scatter = summaries.map(o=>({id:o.s.id, x:o.summary.std, y:o.summary.npv}));
   const ctx = document.getElementById('chartScatter').getContext('2d');
@@ -640,7 +647,7 @@ function runMonteCarlo(s,p,sim=800){
     const sClone = {...s, executionSuccessRate: exec, arbitrationWinFactor: s.arbitrationWinFactor};
     const base = baseNValue(pClone);
     const payout = base*(1+sClone.arbitrationExtraN)*om*exec*sClone.arbitrationWinFactor;
-    const rows = buildTimeline(sClone,pClone,24);
+    const rows = buildTimeline(sClone,pClone,scenarioHorizon(sClone,pClone));
     const npv = rows.reduce((a,b)=>a+b.discounted,0) + payout/Math.pow(1+dr/12, (s.arbitrationDurationMonths||1));
     results.push(npv);
   }
