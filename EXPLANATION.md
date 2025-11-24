@@ -14,7 +14,7 @@
 `disposable = net(税后收入) + employerBenefit(雇主公积金) + lump(仲裁一次性补偿) − selfPay(失业续保) − oppCost(机会成本)`。
 
 - `gross`：根据场景的全薪/降薪/待岗阶段决定毛收入；无收入月份为 0。
-- `net`：由 `calcAfterTaxIncome` 计算，等于 `gross + monthlyBonusSmoothed − 个人五险一金 − 有效税`，如果当月毛收入为 0 则不计提五险一金。
+- `net`：由 `calcAfterTaxIncome` 计算，等于 `gross + monthlyBonusSmoothed − 个人五险一金 − 有效税`，其中个人五险一金按“实际发薪额与社保/公积金基数取小”的有效基数计提；如果当月毛收入为 0 则不计提五险一金。
 - `employerBenefit`：当月有工资/补贴时计入的公积金入账额（公司 + 个人），避免个人公积金在净收入中扣除后未加回。
 - `lump`：仲裁月份（`arbitrationDurationMonths`）计入一次性补偿，包含“法定 N 期望值 × 支持度 × 执行率”以及自动算出的降薪/待岗工资补回（同样乘以支持度与执行率），不再额外乘仲裁概率。
 - `selfPay`：仅在仲裁等待期（无工资阶段）且选择续保时计入的自付社保固定支出，完结后不再扣。

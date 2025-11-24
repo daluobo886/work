@@ -285,8 +285,10 @@ function readParams(){
 
 function calcEmployeeContrib(p, gross){
   if(gross<=0) return 0;
-  const social = p.socialBase * (p.pensionEmployeeRate + p.medicalEmployeeRate + p.unemploymentEmployeeRate);
-  const housing = p.housingBase * p.housingEmployeeRate;
+  const effectiveSocialBase = Math.min(gross, p.socialBase);
+  const effectiveHousingBase = Math.min(gross, p.housingBase);
+  const social = effectiveSocialBase * (p.pensionEmployeeRate + p.medicalEmployeeRate + p.unemploymentEmployeeRate);
+  const housing = effectiveHousingBase * p.housingEmployeeRate;
   return social + housing;
 }
 function calcEmployerBenefit(p, gross){
@@ -342,6 +344,8 @@ function defaultScenarios(){
 function renderScenarioTable(){
   const tbody = document.querySelector('#scenarioTable tbody');
   tbody.innerHTML = '';
+  const select = document.getElementById('scenarioSelect');
+  const prevSelected = select?.value;
   scenarios.forEach((s, idx)=>{
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -366,8 +370,9 @@ function renderScenarioTable(){
     });
     tbody.appendChild(tr);
   });
-  const select = document.getElementById('scenarioSelect');
   select.innerHTML = scenarios.map(s=>`<option value="${s.id}">${s.id}-${s.name}</option>`).join('');
+  if(prevSelected && scenarios.find(s=>s.id===prevSelected)) select.value = prevSelected;
+  if(!select.value && scenarios.length) select.value = scenarios[0].id;
 }
 
 function scenarioHorizon(s, p){
@@ -719,10 +724,14 @@ function renderCharts(summaries){
   const scatter = summaries.map(o=>({id:o.s.id, x:o.summary.std, y:o.summary.npv}));
   const scatterCanvas = document.getElementById('chartScatter');
   const {ctx:ctxS,w:ws,h:hs} = ensureCanvasSize(scatterCanvas);
-  const maxX=Math.max(...scatter.map(p=>p.x),1); const minX=Math.min(...scatter.map(p=>p.x),0);
-  const maxY=Math.max(...scatter.map(p=>p.y),1); const minY=Math.min(...scatter.map(p=>p.y),0);
+  const rawMaxX=Math.max(...scatter.map(p=>p.x),1); const rawMinX=Math.min(...scatter.map(p=>p.x),0);
+  const rawMaxY=Math.max(...scatter.map(p=>p.y),1); const rawMinY=Math.min(...scatter.map(p=>p.y),0);
+  const padX = (rawMaxX - rawMinX || 1)*0.1; const padY = (rawMaxY - rawMinY || 1)*0.1;
+  const maxX = rawMaxX + padX; const minX = rawMinX - padX;
+  const maxY = rawMaxY + padY; const minY = rawMinY - padY;
+  const xTicks = Array.from({length:6}, (_,i)=>({pos:i/5,label:formatTick(minX + (maxX-minX)*i/5)}));
   ctxS.clearRect(0,0,ws,hs);
-  drawAxes(ctxS,ws,hs,{xMin:minX, xMax:maxX, yMin:minY, yMax:maxY, xTicks:null});
+  drawAxes(ctxS,ws,hs,{xMin:minX, xMax:maxX, yMin:minY, yMax:maxY, xTicks, yTicks:6});
   scatter.forEach((pt,i)=>{
     const x=AXIS.left + (ws-AXIS.left-AXIS.right)*((pt.x-minX)/(maxX-minX||1));
     const y=hs-AXIS.bottom - (pt.y-minY)/(maxY-minY||1)*(hs-AXIS.bottom-AXIS.top);
