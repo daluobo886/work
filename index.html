@@ -333,12 +333,12 @@ function baseNValue(p){
 function defaultScenarios(){
   const p = defaultParams();
   return [
-    {id:'S1', name:'3月全薪主动离职', fullSalaryMonths:3, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationDurationMonths:3},
-    {id:'S2', name:'4月全薪主动离职', fullSalaryMonths:4, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationDurationMonths:4},
-    {id:'S3', name:'2月降薪+仲裁', fullSalaryMonths:0, salaryCutRatio:0.5, salaryCutMonths:2, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationDurationMonths:10},
-    {id:'S4', name:'2月待岗+仲裁', fullSalaryMonths:0, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:2, arbitrationDurationMonths:10},
-    {id:'S5', name:'6月降薪+6月待岗', fullSalaryMonths:0, salaryCutRatio:0.5, salaryCutMonths:6, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:6, arbitrationDurationMonths:12},
-    {id:'S6', name:'12个月待岗', fullSalaryMonths:0, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:12, arbitrationDurationMonths:12}
+    {id:'S1', name:'3月全薪主动离职', allowArbitration:false, fullSalaryMonths:3, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationDurationMonths:3},
+    {id:'S2', name:'4月全薪主动离职', allowArbitration:false, fullSalaryMonths:4, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationDurationMonths:4},
+    {id:'S3', name:'2月降薪+仲裁', allowArbitration:true, fullSalaryMonths:0, salaryCutRatio:0.5, salaryCutMonths:2, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationDurationMonths:10},
+    {id:'S4', name:'2月待岗+仲裁', allowArbitration:true, fullSalaryMonths:0, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:2, arbitrationDurationMonths:10},
+    {id:'S5', name:'6月降薪+6月待岗', allowArbitration:false, fullSalaryMonths:0, salaryCutRatio:0.5, salaryCutMonths:6, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:6, arbitrationDurationMonths:12},
+    {id:'S6', name:'12个月待岗', allowArbitration:false, fullSalaryMonths:0, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:12, arbitrationDurationMonths:12}
   ];
 }
 
@@ -393,8 +393,8 @@ function buildTimeline(s, p, horizon=scenarioHorizon(s, p)){
   const payMonths = s.fullSalaryMonths + s.salaryCutMonths + s.standbyMonths;
   const wageMakeupRaw = Math.max(0, s.salaryCutMonths * (1 - s.salaryCutRatio) * p.monthlyGrossSalary)
     + Math.max(0, s.standbyMonths * (p.monthlyGrossSalary - s.standbyMonthlyPay));
-  const wageMakeup = wageMakeupRaw * supportFactor * execFactor;
-  const arbitrationPayout = baseN * supportFactor * execFactor;
+  const wageMakeup = (s.allowArbitration ? wageMakeupRaw : 0) * supportFactor * execFactor;
+  const arbitrationPayout = (s.allowArbitration ? baseN : 0) * supportFactor * execFactor;
 
   for(let m=1;m<=horizon;m++){
     let gross=0;
@@ -410,7 +410,7 @@ function buildTimeline(s, p, horizon=scenarioHorizon(s, p)){
     const selfPay = (inArbitrationWait && p.keepSocialSecurityDuringUnemployment)? p.selfSocialSecurityCostPerMonth : 0;
     const oppCost = (m<=horizon? p.unemploymentOpportunityCostFactor * p.expectedReemploymentIncome:0);
     let lump = 0;
-    if(!s.noLump && s.arbitrationDurationMonths && m===s.arbitrationDurationMonths) lump = (arbitrationPayout + wageMakeup);
+    if(s.allowArbitration && !s.noLump && s.arbitrationDurationMonths && m===s.arbitrationDurationMonths) lump = (arbitrationPayout + wageMakeup);
 
     const disposable = net + employerBenefit + lump - selfPay - oppCost;
     const disc = 1/Math.pow(1+monthlyRate, m-1);
@@ -435,23 +435,27 @@ function summarizeScenario(s,p){
   const supportFactor = expectedSupportFactor(p);
   const wageMakeupRaw = Math.max(0, s.salaryCutMonths * (1 - s.salaryCutRatio) * p.monthlyGrossSalary)
     + Math.max(0, s.standbyMonths * (p.monthlyGrossSalary - s.standbyMonthlyPay));
-  const wageMakeup = wageMakeupRaw * supportFactor * execFactor;
-  const outcomes = outcomeMultipliers(p).map(o=>({prob:o.prob, value: (baseN*o.mult*execFactor + wageMakeup)}));
-  const lumpExpectation = (baseN*supportFactor*execFactor + wageMakeup);
-  const EV = outcomes.reduce((a,b)=>a+b.prob*b.value,0);
-  const variance = outcomes.reduce((a,b)=>a+b.prob*Math.pow(b.value-EV,2),0);
-  const std = Math.sqrt(variance);
-  const sorted = outcomes.flatMap(o=>[{prob:o.prob, value:o.value}]).sort((a,b)=>a.value-b.value);
-  let c=0,VaR=0,CVaR=0,sumCV=0,countCV=0;
-  for(const o of sorted){
-    c+=o.prob; if(VaR===0 && c>=0.05){VaR=o.value;}
-    if(c<=0.05){sumCV+=o.value*o.prob;countCV+=o.prob;}
+  let outcomes = [];
+  let lumpExpectation = 0, EV = 0, variance = 0, std = 0, CE = 0, riskPremium = 0, VaR = 0, CVaR = 0;
+  if(s.allowArbitration){
+    const wageMakeup = wageMakeupRaw * supportFactor * execFactor;
+    outcomes = outcomeMultipliers(p).map(o=>({prob:o.prob, value: (baseN*o.mult*execFactor + wageMakeup)}));
+    lumpExpectation = (baseN*supportFactor*execFactor + wageMakeup);
+    EV = outcomes.reduce((a,b)=>a+b.prob*b.value,0);
+    variance = outcomes.reduce((a,b)=>a+b.prob*Math.pow(b.value-EV,2),0);
+    std = Math.sqrt(variance);
+    const sorted = outcomes.flatMap(o=>[{prob:o.prob, value:o.value}]).sort((a,b)=>a.value-b.value);
+    let c=0,sumCV=0,countCV=0;
+    for(const o of sorted){
+      c+=o.prob; if(VaR===0 && c>=0.05){VaR=o.value;}
+      if(c<=0.05){sumCV+=o.value*o.prob;countCV+=o.prob;}
+    }
+    CVaR = countCV>0? sumCV/countCV : 0;
+    const lambda = p.riskAversionLambda || 0.00001;
+    const EU = outcomes.reduce((a,b)=>a + b.prob * (-Math.exp(-lambda*b.value)),0);
+    CE = -Math.log(-EU)/lambda;
+    riskPremium = EV - CE;
   }
-  CVaR = countCV>0? sumCV/countCV : 0;
-  const lambda = p.riskAversionLambda || 0.00001;
-  const EU = outcomes.reduce((a,b)=>a + b.prob * (-Math.exp(-lambda*b.value)),0);
-  const CE = -Math.log(-EU)/lambda;
-  const riskPremium = EV - CE;
 
   const survivalMin = Math.min(...rows.map(r=>r.net + r.employerBenefit + r.lump - r.selfPay - r.oppCost));
   const maxLiving = survivalMin;
@@ -491,7 +495,7 @@ function renderSummary(){
 
 function addScenario(){
   const idx = scenarios.length+1;
-  scenarios.push({id:`S${idx}`, name:`新场景${idx}`, fullSalaryMonths:2, salaryCutRatio:params.salaryCutRatio, salaryCutMonths:2, standbyMonthlyPay:params.monthlyGrossSalary*params.standbyRatio, standbyMonths:2, arbitrationDurationMonths:6, arbitrationWinFactor:0.8, executionSuccessRate:expectedExecutionFactor(params)});
+  scenarios.push({id:`S${idx}`, name:`新场景${idx}`, allowArbitration:false, fullSalaryMonths:2, salaryCutRatio:params.salaryCutRatio, salaryCutMonths:2, standbyMonthlyPay:params.monthlyGrossSalary*params.standbyRatio, standbyMonths:2, arbitrationDurationMonths:0});
   renderScenarioTable();
   updateAll();
 }
@@ -655,6 +659,23 @@ function drawTimeline(canvas, segments, horizon=24){
   ctx.fillText('时间轴(月)',10,20);
 }
 
+function normalizeProbs(p, keys){
+  const total = keys.reduce((sum,k)=>sum+Math.max(0,p[k]||0),0) || 1;
+  keys.forEach(k=>{ p[k] = Math.max(0,p[k]||0) / total; });
+  return p;
+}
+
+function sensitivityForScenario(s, p, modifyFn, shock=0.2){
+  const base = Math.min(summarizeScenario(s, p).npv, p.managerMaxCost||Infinity);
+  const pUp = modifyFn({...p}, +shock);
+  const up = Math.min(summarizeScenario(s, pUp).npv, pUp.managerMaxCost||Infinity);
+  const pDown = modifyFn({...p}, -shock);
+  const down = Math.min(summarizeScenario(s, pDown).npv, pDown.managerMaxCost||Infinity);
+  const dUp = up - base;
+  const dDown = down - base;
+  return Math.abs(dUp) >= Math.abs(dDown) ? dUp : dDown;
+}
+
 function renderCharts(summaries){
   const labels = summaries.map(o=>o.s.id);
   const npvs = summaries.map(o=>o.summary.npv);
@@ -678,23 +699,43 @@ function renderCharts(summaries){
   ];
   drawBarChart(document.getElementById('chartPayoff'), payoffParts, ['净薪资','雇主公积金','仲裁补偿','自付社保','机会成本'], {title:'现金流构成', colors:['#2c7be5','#5cc9a7','#f0b429','#c0392b','#7f8c8d']});
 
-  const heatMatrix = [
-    [ -2,-1,0,1,2,3 ],
-    [ -1,-0.5,0,1,2,2.5 ],
-    [ -0.5,0,0.5,1.5,2,2.2 ],
-    [ -0.2,0.2,0.6,1,1.4,1.8 ],
-    [ -0.1,0.1,0.3,0.8,1.2,1.5 ]
+  const outcomeDefs = outcomeMultipliers(params).map((o, idx)=>({label:['2N','1N','7-9N','4-6N','0N'][idx], mult:o.mult}));
+  const execDefs = [
+    {label:'执行0', rate:0},
+    {label:'25%', rate:0.25},
+    {label:'50%', rate:0.5},
+    {label:'75%', rate:0.75},
+    {label:'100%', rate:1}
   ];
-  drawHeatmap(document.getElementById('chartHeat'), heatMatrix, ['0','4N','7N','9N','12N','2N'], ['执行0','25%','50%','75%','100%'], {title:'仲裁结果 vs 执行率', max:3});
+  const baseHeat = baseNValue(params);
+  const heatMatrix = execDefs.map(e=> outcomeDefs.map(o=> baseHeat * o.mult * e.rate));
+  drawHeatmap(
+    document.getElementById('chartHeat'),
+    heatMatrix,
+    outcomeDefs.map(o=>o.label),
+    execDefs.map(e=>e.label),
+    {title:'仲裁结果 vs 执行率', max: Math.max(...heatMatrix.flat(), 1)}
+  );
 
   const tornadoParams=['贴现率','法律胜率','执行率','再就业收入','管理员上限'];
-  const baseNPV = selSummary.summary.npv;
-  const shocks=[0.2,-0.2];
-  const change=tornadoParams.map((pname,i)=>{
-    const delta = (i%2===0? shocks[0]:shocks[1]);
-    return baseNPV*delta*0.4; // simplified sensitivity
-  });
-  drawBarChart(document.getElementById('chartTornado'), change, tornadoParams, {title:'敏感度龙卷风', colors:['#2c7be5','#f0b429','#c0392b','#5cc9a7','#7f8c8d']});
+  const tornadoFns = [
+    (p,shock)=>{ p.discountRateAnnual = Math.max(0.001, p.discountRateAnnual*(1+shock)); return p; },
+    (p,shock)=>{
+      ['p_2N_full','p_1N_full','p_mid_7to9N','p_low_4to6N'].forEach(k=>{ p[k] = Math.max(0, (p[k]||0)*(1+shock)); });
+      normalizeProbs(p, ['p_2N_full','p_1N_full','p_mid_7to9N','p_low_4to6N','p_zero']);
+      return p;
+    },
+    (p,shock)=>{
+      const keys=['p_exec_100','p_exec_75','p_exec_50','p_exec_25','p_exec_0'];
+      keys.forEach(k=>{ p[k] = Math.max(0, (p[k]||0)*(1+shock)); });
+      normalizeProbs(p, keys);
+      return p;
+    },
+    (p,shock)=>{ p.expectedReemploymentIncome = p.expectedReemploymentIncome*(1+shock); return p; },
+    (p,shock)=>{ p.managerMaxCost = p.managerMaxCost*(1+shock); return p; }
+  ];
+  const change = tornadoFns.map(fn=>sensitivityForScenario(selSummary.s, params, fn, 0.2));
+  drawBarChart(document.getElementById('chartTornado'), change, tornadoParams, {title:'敏感度龙卷风（±20% 参数冲击）', colors:['#2c7be5','#f0b429','#c0392b','#5cc9a7','#7f8c8d']});
 
   const mc = monteCarloResults[selId]||[];
   drawHistogram(document.getElementById('chartHistogram'), mc, {title:'Monte Carlo NPV'});
@@ -723,11 +764,18 @@ function renderCharts(summaries){
   ];
   drawTimeline(document.getElementById('chartTimeline'), segs, horizon);
 
-  const scatter = summaries.map(o=>({id:o.s.id, x:o.summary.std, y:o.summary.npv}));
+  const scatter = summaries.map(o=>{
+    const arr = monteCarloResults[o.s.id] || [];
+    if(!arr.length) return {id:o.s.id, ret:o.summary.npv, risk:0};
+    const n = arr.length;
+    const mean = arr.reduce((a,b)=>a+b,0)/n;
+    const variance = arr.reduce((a,b)=>a+Math.pow(b-mean,2),0)/n;
+    return {id:o.s.id, ret:mean, risk:Math.sqrt(variance)};
+  });
   const scatterCanvas = document.getElementById('chartScatter');
   const {ctx:ctxS,w:ws,h:hs} = ensureCanvasSize(scatterCanvas);
-  const rawMaxX=Math.max(...scatter.map(p=>p.x),1); const rawMinX=Math.min(...scatter.map(p=>p.x),0);
-  const rawMaxY=Math.max(...scatter.map(p=>p.y),1); const rawMinY=Math.min(...scatter.map(p=>p.y),0);
+  const rawMaxX=Math.max(...scatter.map(p=>p.ret),1); const rawMinX=Math.min(...scatter.map(p=>p.ret),0);
+  const rawMaxY=Math.max(...scatter.map(p=>p.risk),1); const rawMinY=Math.min(...scatter.map(p=>p.risk),0);
   const padX = (rawMaxX - rawMinX || 1)*0.1; const padY = (rawMaxY - rawMinY || 1)*0.1;
   const maxX = rawMaxX + padX; const minX = rawMinX - padX;
   const maxY = rawMaxY + padY; const minY = rawMinY - padY;
@@ -735,15 +783,17 @@ function renderCharts(summaries){
   ctxS.clearRect(0,0,ws,hs);
   drawAxes(ctxS,ws,hs,{xMin:minX, xMax:maxX, yMin:minY, yMax:maxY, xTicks, yTicks:6});
   scatter.forEach((pt,i)=>{
-    const x=AXIS.left + (ws-AXIS.left-AXIS.right)*((pt.x-minX)/(maxX-minX||1));
-    const y=hs-AXIS.bottom - (pt.y-minY)/(maxY-minY||1)*(hs-AXIS.bottom-AXIS.top);
+    const x=AXIS.left + (ws-AXIS.left-AXIS.right)*((pt.ret-minX)/(maxX-minX||1));
+    const y=hs-AXIS.bottom - (pt.risk-minY)/(maxY-minY||1)*(hs-AXIS.bottom-AXIS.top);
     ctxS.fillStyle=`hsl(${i*60},70%,50%)`; ctxS.beginPath(); ctxS.arc(x,y,5,0,Math.PI*2); ctxS.fill();
     ctxS.fillStyle='#111'; ctxS.fillText(pt.id, x+6, y-6);
   });
-  ctxS.fillText('风险(标准差)',10,14);
+  ctxS.fillStyle='#111';
+  ctxS.fillText('横轴：收益 E[NPV]',10,14);
+  ctxS.fillText('纵轴：风险 σ(NPV)',10,28);
 }
 
-function runMonteCarlo(s,p,sim=800){
+function runMonteCarlo(s,p,sim=5000){
   const results=[];
   const execDist=[{p:p.p_exec_0, v:0},{p:p.p_exec_25,v:0.25},{p:p.p_exec_50,v:0.5},{p:p.p_exec_75,v:0.75},{p:p.p_exec_100,v:1}];
   const outcome=outcomeMultipliers(p);
@@ -755,18 +805,21 @@ function runMonteCarlo(s,p,sim=800){
   for(let i=0;i<sim;i++){
     const dr = Math.min(0.6, Math.max(0.01, p.discountRateAnnual + (Math.random()-0.5)*0.1));
     const pClone = {...p, discountRateAnnual: dr};
-    const exec = sampleDist(execDist);
-    const om = sampleDist(outcome.map(o=>({p:o.prob,v:o.mult})));
     const sClone = {...s};
-    const base = baseNValue(pClone);
-    const wageMakeupRaw = Math.max(0, sClone.salaryCutMonths * (1 - sClone.salaryCutRatio) * pClone.monthlyGrossSalary)
-      + Math.max(0, sClone.standbyMonths * (pClone.monthlyGrossSalary - sClone.standbyMonthlyPay));
-    const payout = (base*om*exec + wageMakeupRaw*supportFactor*exec);
     const timelineScenario = {...sClone, noLump:true};
     const rows = buildTimeline(timelineScenario,pClone,scenarioHorizon(sClone,pClone));
     const monthlyRate = Math.pow(1+dr, pClone.timeStepMonths/12) - 1;
-    const lumpDisc = 1/Math.pow(1+monthlyRate, (sClone.arbitrationDurationMonths||1)-1);
-    const npv = rows.reduce((a,b)=>a+b.discounted,0) + payout*lumpDisc;
+    let npv = rows.reduce((a,b)=>a+b.discounted,0);
+    if(s.allowArbitration){
+      const exec = sampleDist(execDist);
+      const om = sampleDist(outcome.map(o=>({p:o.prob,v:o.mult})));
+      const base = baseNValue(pClone);
+      const wageMakeupRaw = Math.max(0, sClone.salaryCutMonths * (1 - sClone.salaryCutRatio) * pClone.monthlyGrossSalary)
+        + Math.max(0, sClone.standbyMonths * (pClone.monthlyGrossSalary - sClone.standbyMonthlyPay));
+      const payout = (base*om*exec + wageMakeupRaw*supportFactor*exec);
+      const lumpDisc = 1/Math.pow(1+monthlyRate, (sClone.arbitrationDurationMonths||1)-1);
+      npv += payout*lumpDisc;
+    }
     results.push(npv);
   }
   monteCarloResults[s.id]=results;
@@ -776,7 +829,7 @@ function updateAll(){
   readParams();
   scenarios.forEach(s=>{ s.standbyMonthlyPay = params.monthlyGrossSalary*params.standbyRatio; });
   renderScenarioTable();
-  scenarios.forEach(s=>runMonteCarlo(s, params, 500));
+  scenarios.forEach(s=>runMonteCarlo(s, params));
   renderSummary();
 }
 
