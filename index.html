@@ -162,7 +162,7 @@
       <table id="scenarioTable">
         <thead>
           <tr>
-            <th>场景</th><th>描述</th><th>全薪月</th><th>降薪比</th><th>降薪月</th><th>待岗/月</th><th>待岗月</th><th>额外N</th><th>仲裁月</th><th>仲裁概率</th><th>支持度</th><th>执行率</th>
+            <th>场景</th><th>描述</th><th>全薪月</th><th>降薪比</th><th>降薪月</th><th>待岗/月</th><th>待岗月</th><th>仲裁月</th><th>支持度</th><th>执行率</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -173,11 +173,11 @@
       <ul style="margin:0 0 6px 18px; padding:0;">
         <li><strong>奖金（monthlyBonusSmoothed）</strong>：平滑到每月的税前奖金，直接加在当月毛收入上；未填时视为 0。</li>
         <li><strong>每月折现因子</strong>：代码使用 <code>monthlyRate = (1+yearlyRate)^(timeStep/12)-1</code>，折现 <code>disc = 1 / (1 + monthlyRate)^(m-1)</code>。若时间步为 1 个月，两式与 <code>1 / (1 + yearlyRate)^((m-1)/12)</code> 等价；当前写法可兼容非常用的时间步。</li>
-        <li><strong>现金流公式</strong>：<code>税后收入(net) + 公积金入账(employerBenefit) + 仲裁一次性补偿(lump) − 自付社保(selfPay) − 机会成本(oppCost)</code>。仲裁补偿含：N 期望值 × 支持度 × 执行率 + 自动计算的降薪/待岗工资补回，均在仲裁结算当月按提仲概率计入；机会成本按“事项未完结”逐月扣除，仲裁等待期才会出现续保成本。</li>
+        <li><strong>现金流公式</strong>：<code>税后收入(net) + 公积金入账(employerBenefit) + 仲裁一次性补偿(lump) − 自付社保(selfPay) − 机会成本(oppCost)</code>。仲裁补偿含：法定 N 期望值 × 支持度 × 执行率 + 自动计算的降薪/待岗工资补回（同样乘以支持度与执行率），在仲裁结算当月全额计入；机会成本按“事项未完结”逐月扣除，仲裁等待期才会出现续保成本。</li>
         <li><strong>场景表列对应</strong>：
           <ul style="margin:6px 0 0 14px; padding:0; list-style:circle;">
             <li>全薪月/降薪比/降薪月/待岗月/待岗支付：控制 <code>gross</code> 的阶段性收入。</li>
-            <li>额外N/仲裁月/仲裁概率：进入仲裁一次性补偿 <code>lump</code> 的期望值计算。</li>
+            <li>仲裁月：决定补偿与补回工资的折现月份。</li>
             <li>支持度：映射到 <code>arbitrationWinFactor</code>（获裁概率/证据强度）。</li>
             <li>执行率：映射到 <code>executionSuccessRate</code>，与赔付档概率共同得到 <code>expectedExecutionFactor</code>。</li>
           </ul>
@@ -327,12 +327,12 @@ function baseNValue(p){
 function defaultScenarios(){
   const p = defaultParams();
   return [
-    {id:'S1', name:'3月全薪主动离职', fullSalaryMonths:3, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationExtraN:0, arbitrationDurationMonths:3, probUseArbitration:0, arbitrationWinFactor:1, executionSuccessRate:0},
-    {id:'S2', name:'4月全薪主动离职', fullSalaryMonths:4, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationExtraN:0, arbitrationDurationMonths:4, probUseArbitration:0, arbitrationWinFactor:1, executionSuccessRate:0},
-    {id:'S3', name:'2月降薪+仲裁', fullSalaryMonths:0, salaryCutRatio:0.5, salaryCutMonths:2, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationExtraN:0, arbitrationDurationMonths:10, probUseArbitration:0.7, arbitrationWinFactor:0.8, executionSuccessRate:0.5},
-    {id:'S4', name:'2月待岗+仲裁', fullSalaryMonths:0, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:2, arbitrationExtraN:0, arbitrationDurationMonths:10, probUseArbitration:0.7, arbitrationWinFactor:0.8, executionSuccessRate:0.5},
-    {id:'S5', name:'6月降薪+6月待岗', fullSalaryMonths:0, salaryCutRatio:0.5, salaryCutMonths:6, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:6, arbitrationExtraN:0, arbitrationDurationMonths:12, probUseArbitration:0, arbitrationWinFactor:1, executionSuccessRate:0},
-    {id:'S6', name:'12个月待岗', fullSalaryMonths:0, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:12, arbitrationExtraN:0, arbitrationDurationMonths:12, probUseArbitration:0, arbitrationWinFactor:1, executionSuccessRate:0}
+    {id:'S1', name:'3月全薪主动离职', fullSalaryMonths:3, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationDurationMonths:3, arbitrationWinFactor:1, executionSuccessRate:0},
+    {id:'S2', name:'4月全薪主动离职', fullSalaryMonths:4, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationDurationMonths:4, arbitrationWinFactor:1, executionSuccessRate:0},
+    {id:'S3', name:'2月降薪+仲裁', fullSalaryMonths:0, salaryCutRatio:0.5, salaryCutMonths:2, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationDurationMonths:10, arbitrationWinFactor:0.8, executionSuccessRate:0.5},
+    {id:'S4', name:'2月待岗+仲裁', fullSalaryMonths:0, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:2, arbitrationDurationMonths:10, arbitrationWinFactor:0.8, executionSuccessRate:0.5},
+    {id:'S5', name:'6月降薪+6月待岗', fullSalaryMonths:0, salaryCutRatio:0.5, salaryCutMonths:6, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:6, arbitrationDurationMonths:12, arbitrationWinFactor:1, executionSuccessRate:0},
+    {id:'S6', name:'12个月待岗', fullSalaryMonths:0, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:12, arbitrationDurationMonths:12, arbitrationWinFactor:1, executionSuccessRate:0}
   ];
 }
 
@@ -349,9 +349,7 @@ function renderScenarioTable(){
       <td contenteditable data-key="salaryCutMonths">${s.salaryCutMonths}</td>
       <td contenteditable data-key="standbyMonthlyPay">${s.standbyMonthlyPay.toFixed(0)}</td>
       <td contenteditable data-key="standbyMonths">${s.standbyMonths}</td>
-      <td contenteditable data-key="arbitrationExtraN">${s.arbitrationExtraN}</td>
       <td contenteditable data-key="arbitrationDurationMonths">${s.arbitrationDurationMonths}</td>
-      <td contenteditable data-key="probUseArbitration">${s.probUseArbitration}</td>
       <td contenteditable data-key="arbitrationWinFactor">${s.arbitrationWinFactor}</td>
       <td contenteditable data-key="executionSuccessRate">${s.executionSuccessRate}</td>
     `;
@@ -384,9 +382,10 @@ function buildTimeline(s, p, horizon=scenarioHorizon(s, p)){
   const baseN = baseNValue(p);
   const expectedMult = outcomeMultipliers(p).reduce((sum,o)=>sum+o.prob*o.mult,0);
   const payMonths = s.fullSalaryMonths + s.salaryCutMonths + s.standbyMonths;
-  const wageMakeup = Math.max(0, s.salaryCutMonths * (1 - s.salaryCutRatio) * p.monthlyGrossSalary)
+  const wageMakeupRaw = Math.max(0, s.salaryCutMonths * (1 - s.salaryCutRatio) * p.monthlyGrossSalary)
     + Math.max(0, s.standbyMonths * (p.monthlyGrossSalary - s.standbyMonthlyPay));
-  const arbitrationPayout = baseN * (1 + s.arbitrationExtraN) * (s.arbitrationWinFactor||1) * expectedMult * execFactor;
+  const wageMakeup = wageMakeupRaw * (s.arbitrationWinFactor||1) * execFactor;
+  const arbitrationPayout = baseN * (s.arbitrationWinFactor||1) * expectedMult * execFactor;
 
   for(let m=1;m<=horizon;m++){
     let gross=0;
@@ -401,7 +400,7 @@ function buildTimeline(s, p, horizon=scenarioHorizon(s, p)){
     const selfPay = (inArbitrationWait && p.keepSocialSecurityDuringUnemployment)? p.selfSocialSecurityCostPerMonth : 0;
     const oppCost = (m<=horizon? p.unemploymentOpportunityCostFactor * p.expectedReemploymentIncome:0);
     let lump = 0;
-    if(s.arbitrationDurationMonths && m===s.arbitrationDurationMonths) lump = (arbitrationPayout + wageMakeup) * s.probUseArbitration;
+    if(!s.noLump && s.arbitrationDurationMonths && m===s.arbitrationDurationMonths) lump = (arbitrationPayout + wageMakeup);
 
     const disposable = net + employerBenefit + lump - selfPay - oppCost;
     const disc = 1/Math.pow(1+monthlyRate, m-1);
@@ -424,10 +423,11 @@ function summarizeScenario(s,p){
   const baseN = baseNValue(p);
   const execFactor = s.executionSuccessRate || expectedExecutionFactor(p);
   const expectedMult = outcomeMultipliers(p).reduce((sum,o)=>sum+o.prob*o.mult,0);
-  const wageMakeup = Math.max(0, s.salaryCutMonths * (1 - s.salaryCutRatio) * p.monthlyGrossSalary)
+  const wageMakeupRaw = Math.max(0, s.salaryCutMonths * (1 - s.salaryCutRatio) * p.monthlyGrossSalary)
     + Math.max(0, s.standbyMonths * (p.monthlyGrossSalary - s.standbyMonthlyPay));
-  const outcomes = outcomeMultipliers(p).map(o=>({prob:o.prob, value: (baseN*(1+s.arbitrationExtraN)*o.mult*execFactor*(s.arbitrationWinFactor||1) + wageMakeup)*(s.probUseArbitration||0)}));
-  const lumpExpectation = (baseN*(1+s.arbitrationExtraN)*expectedMult*execFactor*(s.arbitrationWinFactor||1) + wageMakeup) * (s.probUseArbitration||0);
+  const wageMakeup = wageMakeupRaw * (s.arbitrationWinFactor||1) * execFactor;
+  const outcomes = outcomeMultipliers(p).map(o=>({prob:o.prob, value: (baseN*o.mult*execFactor*(s.arbitrationWinFactor||1) + wageMakeup)}));
+  const lumpExpectation = (baseN*expectedMult*execFactor*(s.arbitrationWinFactor||1) + wageMakeup);
   const EV = outcomes.reduce((a,b)=>a+b.prob*b.value,0);
   const variance = outcomes.reduce((a,b)=>a+b.prob*Math.pow(b.value-EV,2),0);
   const std = Math.sqrt(variance);
@@ -481,7 +481,7 @@ function renderSummary(){
 
 function addScenario(){
   const idx = scenarios.length+1;
-  scenarios.push({id:`S${idx}`, name:`新场景${idx}`, fullSalaryMonths:2, salaryCutRatio:params.salaryCutRatio, salaryCutMonths:2, standbyMonthlyPay:params.monthlyGrossSalary*params.standbyRatio, standbyMonths:2, arbitrationExtraN:0, arbitrationDurationMonths:6, probUseArbitration:0.5, arbitrationWinFactor:0.8, executionSuccessRate:expectedExecutionFactor(params)});
+  scenarios.push({id:`S${idx}`, name:`新场景${idx}`, fullSalaryMonths:2, salaryCutRatio:params.salaryCutRatio, salaryCutMonths:2, standbyMonthlyPay:params.monthlyGrossSalary*params.standbyRatio, standbyMonths:2, arbitrationDurationMonths:6, arbitrationWinFactor:0.8, executionSuccessRate:expectedExecutionFactor(params)});
   renderScenarioTable();
   updateAll();
 }
@@ -744,10 +744,10 @@ function runMonteCarlo(s,p,sim=800){
     const om = sampleDist(outcome.map(o=>({p:o.prob,v:o.mult})));
     const sClone = {...s, executionSuccessRate: exec, arbitrationWinFactor: s.arbitrationWinFactor};
     const base = baseNValue(pClone);
-    const wageMakeup = Math.max(0, sClone.salaryCutMonths * (1 - sClone.salaryCutRatio) * pClone.monthlyGrossSalary)
+    const wageMakeupRaw = Math.max(0, sClone.salaryCutMonths * (1 - sClone.salaryCutRatio) * pClone.monthlyGrossSalary)
       + Math.max(0, sClone.standbyMonths * (pClone.monthlyGrossSalary - sClone.standbyMonthlyPay));
-    const payout = (base*(1+sClone.arbitrationExtraN)*om*exec*(sClone.arbitrationWinFactor||1) + wageMakeup) * (sClone.probUseArbitration||0);
-    const timelineScenario = {...sClone, probUseArbitration:0};
+    const payout = (base*om*exec*(sClone.arbitrationWinFactor||1) + wageMakeupRaw*(sClone.arbitrationWinFactor||1)*exec);
+    const timelineScenario = {...sClone, noLump:true};
     const rows = buildTimeline(timelineScenario,pClone,scenarioHorizon(sClone,pClone));
     const monthlyRate = Math.pow(1+dr, pClone.timeStepMonths/12) - 1;
     const lumpDisc = 1/Math.pow(1+monthlyRate, (sClone.arbitrationDurationMonths||1)-1);
