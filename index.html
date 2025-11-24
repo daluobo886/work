@@ -58,8 +58,11 @@
   th, td { border: 1px solid var(--border); padding: 6px 8px; text-align: right; }
   th { background: #f1f4f8; color: #4a5666; }
   td:first-child, th:first-child { text-align: left; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
-  canvas { background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+  .chart-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 8px; }
+  .chart-card h4 { margin: 0; font-size: 13px; color: #3c4858; letter-spacing: 0.2px; display: flex; align-items: center; justify-content: space-between; }
+  .chart-sub { font-size: 11px; color: #8a94a6; }
+  canvas { background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); width: 100%; height: 240px; }
   .highlight { background: #e8f5ff; }
   .badge { padding: 2px 6px; border-radius: 4px; background: #e1f3ed; color: #2c7a63; font-weight: 600; font-size: 10px; }
   .flex { display: flex; gap: 8px; align-items: center; }
@@ -159,11 +162,29 @@
       <table id="scenarioTable">
         <thead>
           <tr>
-            <th>场景</th><th>描述</th><th>全薪月</th><th>降薪比</th><th>降薪月</th><th>待岗/月</th><th>待岗月</th><th>额外N</th><th>仲裁月</th><th>仲裁概率</th><th>支持度</th><th>执行率</th>
+            <th>场景</th><th>描述</th><th>全薪月</th><th>降薪比</th><th>降薪月</th><th>待岗/月</th><th>待岗月</th><th>仲裁月</th><th>支持度(自动)</th><th>执行率(自动)</th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>
+    </div>
+    <div class="panel" id="formulaPanel">
+      <h3>公式与表格映射说明</h3>
+      <ul style="margin:0 0 6px 18px; padding:0;">
+        <li><strong>奖金（monthlyBonusSmoothed）</strong>：平滑到每月的税前奖金，直接加在当月毛收入上；未填时视为 0。</li>
+        <li><strong>每月折现因子</strong>：代码使用 <code>monthlyRate = (1+yearlyRate)^(timeStep/12)-1</code>，折现 <code>disc = 1 / (1 + monthlyRate)^(m-1)</code>。若时间步为 1 个月，两式与 <code>1 / (1 + yearlyRate)^((m-1)/12)</code> 等价；当前写法可兼容非常用的时间步。</li>
+        <li><strong>现金流公式</strong>：<code>税后收入(net) + 公积金入账(employerBenefit) + 仲裁一次性补偿(lump) − 自付社保(selfPay) − 机会成本(oppCost)</code>。仲裁补偿含：法定 N 期望值 × 支持度 × 执行率 + 自动计算的降薪/待岗工资补回（同样乘以支持度与执行率），在仲裁结算当月全额计入；机会成本按“事项未完结”逐月扣除，仲裁等待期才会出现续保成本。</li>
+        <li><strong>待岗扣缴</strong>：待岗月社保/公积金由公司全额承担（含个人份额），员工侧不扣五险一金，公积金入账仍按基数计算加入收益。</li>
+        <li><strong>场景表列对应</strong>：
+          <ul style="margin:6px 0 0 14px; padding:0; list-style:circle;">
+            <li>全薪月/降薪比/降薪月/待岗月/待岗支付：控制 <code>gross</code> 的阶段性收入。</li>
+            <li>仲裁月：决定补偿与补回工资的折现月份。</li>
+            <li>支持度：由赔付档概率自动计算为加权倍数（不需手填）。</li>
+            <li>执行率：由执行概率分布自动加权得出期望执行率（不需手填）。</li>
+          </ul>
+        </li>
+        <li><strong>个人参数与表单</strong>：收入/扣除（工资、奖金、五险一金、有效税率）决定 <code>net</code>；社保续保费用与机会成本参数决定失业期扣减；贴现率与时间步用于 NPV 折现。</li>
+      </ul>
     </div>
     <div class="panel">
       <h3>场景汇总 (NPV / EV / CE)</h3>
@@ -177,17 +198,17 @@
       <select id="scenarioSelect"></select>
     </div>
     <div class="grid" id="chartsGrid">
-      <canvas id="chartNPV" width="450" height="260"></canvas>
-      <canvas id="chartPayoff" width="450" height="260"></canvas>
-      <canvas id="chartCashflow" width="450" height="260"></canvas>
-      <canvas id="chartCumulative" width="450" height="260"></canvas>
-      <canvas id="chartHeat" width="450" height="260"></canvas>
-      <canvas id="chartTornado" width="450" height="260"></canvas>
-      <canvas id="chartHistogram" width="450" height="260"></canvas>
-      <canvas id="chartQuantiles" width="450" height="260"></canvas>
-      <canvas id="chartNegative" width="450" height="260"></canvas>
-      <canvas id="chartTimeline" width="450" height="260"></canvas>
-      <canvas id="chartScatter" width="450" height="260"></canvas>
+      <div class="chart-card"><h4>NPV 对比<span class="chart-sub">场景间折现价值</span></h4><canvas id="chartNPV"></canvas></div>
+      <div class="chart-card"><h4>现金流构成<span class="chart-sub">净薪资 / 公积金 / 仲裁</span></h4><canvas id="chartPayoff"></canvas></div>
+      <div class="chart-card"><h4>月度现金流<span class="chart-sub">含折现因子</span></h4><canvas id="chartCashflow"></canvas></div>
+      <div class="chart-card"><h4>累计现金流轨迹</h4><canvas id="chartCumulative"></canvas></div>
+      <div class="chart-card"><h4>仲裁结果 vs 执行率</h4><canvas id="chartHeat"></canvas></div>
+      <div class="chart-card"><h4>敏感度龙卷风<span class="chart-sub">±20% 参数冲击</span></h4><canvas id="chartTornado"></canvas></div>
+      <div class="chart-card"><h4>Monte Carlo NPV</h4><canvas id="chartHistogram"></canvas></div>
+      <div class="chart-card"><h4>分位/箱线对比<span class="chart-sub">5/25/50/75/95%</span></h4><canvas id="chartQuantiles"></canvas></div>
+      <div class="chart-card"><h4>负现金流月份</h4><canvas id="chartNegative"></canvas></div>
+      <div class="chart-card"><h4>阶段时间线</h4><canvas id="chartTimeline"></canvas></div>
+      <div class="chart-card"><h4>风险-收益散点</h4><canvas id="chartScatter"></canvas></div>
     </div>
   </div>
 </main>
@@ -263,20 +284,24 @@ function readParams(){
   Object.assign(params, p);
 }
 
-function calcEmployeeContrib(p){
-  const social = p.socialBase * (p.pensionEmployeeRate + p.medicalEmployeeRate + p.unemploymentEmployeeRate);
-  const housing = p.housingBase * p.housingEmployeeRate;
+function calcEmployeeContrib(p, gross, {isStandby=false}={}){
+  if(gross<=0 || isStandby) return 0;
+  const effectiveSocialBase = Math.min(gross, p.socialBase);
+  const effectiveHousingBase = Math.min(gross, p.housingBase);
+  const social = effectiveSocialBase * (p.pensionEmployeeRate + p.medicalEmployeeRate + p.unemploymentEmployeeRate);
+  const housing = effectiveHousingBase * p.housingEmployeeRate;
   return social + housing;
 }
-function calcEmployerBenefit(p){
-  return p.socialBase * (p.pensionEmployerRate + p.medicalEmployerRate + p.unemploymentEmployerRate) + p.housingBase * p.housingEmployerRate;
+function calcEmployerBenefit(p, gross){
+  if(gross<=0) return 0;
+  return p.housingBase * (p.housingEmployerRate + p.housingEmployeeRate);
 }
 function calcHousingFundValue(p){
   return p.housingBase * (p.housingEmployeeRate + p.housingEmployerRate);
 }
-function calcAfterTaxIncome(p, gross){
+function calcAfterTaxIncome(p, gross, opts={}){
   const bonus = p.monthlyBonusSmoothed || 0;
-  const contrib = calcEmployeeContrib(p);
+  const contrib = calcEmployeeContrib(p, gross, opts);
   const taxable = Math.max(0, gross + bonus - contrib - p.standardDeduction - p.specialDeduction - p.otherPreTaxDeduction);
   const tax = taxable * p.approxEffectiveTaxRate;
   return gross + bonus - contrib - tax;
@@ -297,6 +322,9 @@ function outcomeMultipliers(p){
     {prob:p.p_zero, mult:0}
   ];
 }
+function expectedSupportFactor(p){
+  return outcomeMultipliers(p).reduce((sum,o)=>sum+o.prob*o.mult,0);
+}
 function baseNValue(p){
   const baseMonths = Math.min(p.N_years, p.N_legalCapMultiple);
   return baseMonths * p.N_baseSalary;
@@ -305,18 +333,20 @@ function baseNValue(p){
 function defaultScenarios(){
   const p = defaultParams();
   return [
-    {id:'S1', name:'3月全薪后主动离职', fullSalaryMonths:3, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:2, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:3, arbitrationExtraN:0, arbitrationDurationMonths:6, probUseArbitration:0.2, arbitrationWinFactor:0.9, executionSuccessRate:expectedExecutionFactor(p)},
-    {id:'S2', name:'立即仲裁争取2N', fullSalaryMonths:2, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:4, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:2, arbitrationExtraN:0.8, arbitrationDurationMonths:8, probUseArbitration:0.8, arbitrationWinFactor:1, executionSuccessRate:expectedExecutionFactor(p)},
-    {id:'S3', name:'长时间待岗+仲裁', fullSalaryMonths:1, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:3, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:8, arbitrationExtraN:0.4, arbitrationDurationMonths:10, probUseArbitration:0.7, arbitrationWinFactor:0.8, executionSuccessRate:expectedExecutionFactor(p)},
-    {id:'S4', name:'全薪5月后和平离职', fullSalaryMonths:5, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationExtraN:0, arbitrationDurationMonths:0, probUseArbitration:0.05, arbitrationWinFactor:0.5, executionSuccessRate:expectedExecutionFactor(p)},
-    {id:'S5', name:'降薪+短待岗+仲裁', fullSalaryMonths:2, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:6, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:2, arbitrationExtraN:0.5, arbitrationDurationMonths:7, probUseArbitration:0.6, arbitrationWinFactor:0.85, executionSuccessRate:expectedExecutionFactor(p)},
-    {id:'S6', name:'快速和解支付1N', fullSalaryMonths:1, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:1, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:1, arbitrationExtraN:0.1, arbitrationDurationMonths:4, probUseArbitration:0.3, arbitrationWinFactor:0.6, executionSuccessRate:expectedExecutionFactor(p)}
+    {id:'S1', name:'3月全薪主动离职', fullSalaryMonths:3, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationDurationMonths:3},
+    {id:'S2', name:'4月全薪主动离职', fullSalaryMonths:4, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationDurationMonths:4},
+    {id:'S3', name:'2月降薪+仲裁', fullSalaryMonths:0, salaryCutRatio:0.5, salaryCutMonths:2, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:0, arbitrationDurationMonths:10},
+    {id:'S4', name:'2月待岗+仲裁', fullSalaryMonths:0, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:2, arbitrationDurationMonths:10},
+    {id:'S5', name:'6月降薪+6月待岗', fullSalaryMonths:0, salaryCutRatio:0.5, salaryCutMonths:6, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:6, arbitrationDurationMonths:12},
+    {id:'S6', name:'12个月待岗', fullSalaryMonths:0, salaryCutRatio:p.salaryCutRatio, salaryCutMonths:0, standbyMonthlyPay:p.monthlyGrossSalary*p.standbyRatio, standbyMonths:12, arbitrationDurationMonths:12}
   ];
 }
 
 function renderScenarioTable(){
   const tbody = document.querySelector('#scenarioTable tbody');
   tbody.innerHTML = '';
+  const select = document.getElementById('scenarioSelect');
+  const prevSelected = select?.value;
   scenarios.forEach((s, idx)=>{
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -327,11 +357,9 @@ function renderScenarioTable(){
       <td contenteditable data-key="salaryCutMonths">${s.salaryCutMonths}</td>
       <td contenteditable data-key="standbyMonthlyPay">${s.standbyMonthlyPay.toFixed(0)}</td>
       <td contenteditable data-key="standbyMonths">${s.standbyMonths}</td>
-      <td contenteditable data-key="arbitrationExtraN">${s.arbitrationExtraN}</td>
       <td contenteditable data-key="arbitrationDurationMonths">${s.arbitrationDurationMonths}</td>
-      <td contenteditable data-key="probUseArbitration">${s.probUseArbitration}</td>
-      <td contenteditable data-key="arbitrationWinFactor">${s.arbitrationWinFactor}</td>
-      <td contenteditable data-key="executionSuccessRate">${s.executionSuccessRate}</td>
+      <td style="color:#6b778c;">${expectedSupportFactor(params).toFixed(3)}</td>
+      <td style="color:#6b778c;">${expectedExecutionFactor(params).toFixed(3)}</td>
     `;
     tr.querySelectorAll('[contenteditable]').forEach(cell=>{
       cell.addEventListener('blur', (e)=>{
@@ -343,18 +371,30 @@ function renderScenarioTable(){
     });
     tbody.appendChild(tr);
   });
-  const select = document.getElementById('scenarioSelect');
   select.innerHTML = scenarios.map(s=>`<option value="${s.id}">${s.id}-${s.name}</option>`).join('');
+  if(prevSelected && scenarios.find(s=>s.id===prevSelected)) select.value = prevSelected;
+  if(!select.value && scenarios.length) select.value = scenarios[0].id;
 }
 
-function buildTimeline(s, p, horizon=24){
+function scenarioHorizon(s, p){
+  const payMonths = s.fullSalaryMonths + s.salaryCutMonths + s.standbyMonths;
+  const arbitrationMonth = s.arbitrationDurationMonths || 0;
+  const total = Math.max(payMonths, arbitrationMonth);
+  return Math.max(total, 1);
+}
+
+function buildTimeline(s, p, horizon=scenarioHorizon(s, p)){
   const rows = [];
   let cumulativeMonths = 0;
   const monthlyRate = Math.pow(1+p.discountRateAnnual, p.timeStepMonths/12) -1;
-  const execFactor = s.executionSuccessRate || expectedExecutionFactor(p);
+  const execFactor = expectedExecutionFactor(p);
+  const supportFactor = expectedSupportFactor(p);
   const baseN = baseNValue(p);
-  const expectedMult = outcomeMultipliers(p).reduce((sum,o)=>sum+o.prob*o.mult,0);
-  const arbitrationPayout = baseN * (1 + s.arbitrationExtraN) * (s.arbitrationWinFactor||1) * expectedMult * execFactor;
+  const payMonths = s.fullSalaryMonths + s.salaryCutMonths + s.standbyMonths;
+  const wageMakeupRaw = Math.max(0, s.salaryCutMonths * (1 - s.salaryCutRatio) * p.monthlyGrossSalary)
+    + Math.max(0, s.standbyMonths * (p.monthlyGrossSalary - s.standbyMonthlyPay));
+  const wageMakeup = wageMakeupRaw * supportFactor * execFactor;
+  const arbitrationPayout = baseN * supportFactor * execFactor;
 
   for(let m=1;m<=horizon;m++){
     let gross=0;
@@ -363,23 +403,25 @@ function buildTimeline(s, p, horizon=24){
     else if(m<=s.fullSalaryMonths + s.salaryCutMonths + s.standbyMonths) gross = s.standbyMonthlyPay;
     else gross = 0;
 
-    const net = calcAfterTaxIncome(p, gross);
-    const employerBenefit = calcEmployerBenefit(p) + (gross>0? p.housingBase*p.housingEmployeeRate:0);
-    const livingCost = p.expectedReemploymentIncome;
-    const selfPay = (gross===0 && p.keepSocialSecurityDuringUnemployment)? p.selfSocialSecurityCostPerMonth : 0;
-    const oppCost = (gross===0? p.unemploymentOpportunityCostFactor * p.expectedReemploymentIncome:0);
+    const isStandby = m> s.fullSalaryMonths + s.salaryCutMonths && m<=s.fullSalaryMonths + s.salaryCutMonths + s.standbyMonths;
+    const net = calcAfterTaxIncome(p, gross, {isStandby});
+    const employerBenefit = calcEmployerBenefit(p, gross);
+    const inArbitrationWait = m>payMonths && m<=horizon;
+    const selfPay = (inArbitrationWait && p.keepSocialSecurityDuringUnemployment)? p.selfSocialSecurityCostPerMonth : 0;
+    const oppCost = (m<=horizon? p.unemploymentOpportunityCostFactor * p.expectedReemploymentIncome:0);
     let lump = 0;
-    if(s.arbitrationDurationMonths && m===s.arbitrationDurationMonths) lump = arbitrationPayout * s.probUseArbitration;
+    if(!s.noLump && s.arbitrationDurationMonths && m===s.arbitrationDurationMonths) lump = (arbitrationPayout + wageMakeup);
 
-    const disposable = net + employerBenefit + lump - livingCost - selfPay - oppCost;
+    const disposable = net + employerBenefit + lump - selfPay - oppCost;
     const disc = 1/Math.pow(1+monthlyRate, m-1);
-    rows.push({month:m,gross,net,employerBenefit,livingCost,selfPay,oppCost,lump,disposable,discounted:disposable*disc});
+    rows.push({month:m,gross,net,employerBenefit,selfPay,oppCost,lump,disposable,discounted:disposable*disc});
   }
   return rows;
 }
 
 function summarizeScenario(s,p){
-  const rows = buildTimeline(s,p,24);
+  const horizon = scenarioHorizon(s,p);
+  const rows = buildTimeline(s,p,horizon);
   const totalCash = rows.reduce((a,b)=>a+b.disposable,0);
   const npv = rows.reduce((a,b)=>a+b.discounted,0);
   const duration = totalCash!==0 ? rows.reduce((a,b)=>a+b.month*b.disposable,0)/totalCash : 0;
@@ -389,8 +431,13 @@ function summarizeScenario(s,p){
   const feasible = (npv<=p.managerMaxCost) && (payMonths<=p.managerMaxMonthsPay);
 
   const baseN = baseNValue(p);
-  const execFactor = s.executionSuccessRate || expectedExecutionFactor(p);
-  const outcomes = outcomeMultipliers(p).map(o=>({prob:o.prob, value: baseN*(1+s.arbitrationExtraN)*o.mult*execFactor*s.arbitrationWinFactor}));
+  const execFactor = expectedExecutionFactor(p);
+  const supportFactor = expectedSupportFactor(p);
+  const wageMakeupRaw = Math.max(0, s.salaryCutMonths * (1 - s.salaryCutRatio) * p.monthlyGrossSalary)
+    + Math.max(0, s.standbyMonths * (p.monthlyGrossSalary - s.standbyMonthlyPay));
+  const wageMakeup = wageMakeupRaw * supportFactor * execFactor;
+  const outcomes = outcomeMultipliers(p).map(o=>({prob:o.prob, value: (baseN*o.mult*execFactor + wageMakeup)}));
+  const lumpExpectation = (baseN*supportFactor*execFactor + wageMakeup);
   const EV = outcomes.reduce((a,b)=>a+b.prob*b.value,0);
   const variance = outcomes.reduce((a,b)=>a+b.prob*Math.pow(b.value-EV,2),0);
   const std = Math.sqrt(variance);
@@ -409,7 +456,7 @@ function summarizeScenario(s,p){
   const survivalMin = Math.min(...rows.map(r=>r.net + r.employerBenefit + r.lump - r.selfPay - r.oppCost));
   const maxLiving = survivalMin;
 
-  return {rows,totalCash,npv,duration,EV,std,VaR,CVaR,CE,riskPremium,negatives,firstNegative,feasible,maxLiving};
+  return {rows,totalCash,npv,duration,EV,std,VaR,CVaR,CE,riskPremium,negatives,firstNegative,feasible,maxLiving,lumpExpectation,horizon};
 }
 
 function renderSummary(){
@@ -444,61 +491,120 @@ function renderSummary(){
 
 function addScenario(){
   const idx = scenarios.length+1;
-  scenarios.push({id:`S${idx}`, name:`新场景${idx}`, fullSalaryMonths:2, salaryCutRatio:params.salaryCutRatio, salaryCutMonths:2, standbyMonthlyPay:params.monthlyGrossSalary*params.standbyRatio, standbyMonths:2, arbitrationExtraN:0, arbitrationDurationMonths:6, probUseArbitration:0.5, arbitrationWinFactor:0.8, executionSuccessRate:expectedExecutionFactor(params)});
+  scenarios.push({id:`S${idx}`, name:`新场景${idx}`, fullSalaryMonths:2, salaryCutRatio:params.salaryCutRatio, salaryCutMonths:2, standbyMonthlyPay:params.monthlyGrossSalary*params.standbyRatio, standbyMonths:2, arbitrationDurationMonths:6, arbitrationWinFactor:0.8, executionSuccessRate:expectedExecutionFactor(params)});
   renderScenarioTable();
   updateAll();
 }
 
-function drawAxes(ctx, w, h){
+function ensureCanvasSize(canvas){
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || canvas.width;
+  const h = canvas.clientHeight || canvas.height;
+  if(canvas.width !== w * dpr || canvas.height !== h * dpr){
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx,w,h};
+}
+const AXIS = { left: 64, right: 18, bottom: 36, top: 32 };
+
+function formatTick(v){
+  const abs = Math.abs(v);
+  if(abs >= 100000) return (v/1000).toFixed(0) + 'k';
+  if(abs >= 1000) return v.toFixed(0);
+  if(abs >= 10) return v.toFixed(0);
+  if(abs >= 1) return v.toFixed(1);
+  return v.toFixed(2);
+}
+
+function drawAxes(ctx, w, h, opts={}){
+  const {yMin=0, yMax=1, xMin=0, xMax=1, xTicks=null, yTicks=5} = opts;
+  const {left,right,bottom,top} = AXIS;
+  const spanY = (yMax - yMin) || 1;
+  const spanX = (xMax - xMin) || 1;
   ctx.strokeStyle = '#d0d7e2';
-  ctx.beginPath(); ctx.moveTo(40,h-30); ctx.lineTo(w-10,h-30); ctx.lineTo(w-10,20); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(left, h-bottom); ctx.lineTo(w-right, h-bottom); ctx.lineTo(w-right, top); ctx.stroke();
+  // y ticks
+  for(let i=0;i<=yTicks;i++){
+    const t = i/yTicks;
+    const y = h-bottom - t*(h-bottom-top);
+    const val = yMin + t*spanY;
+    ctx.strokeStyle='#e5e9f2';
+    ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(w-right, y); ctx.stroke();
+    ctx.fillStyle='#6b778c'; ctx.font='10px sans-serif';
+    ctx.fillText(formatTick(val), 4, y+3);
+  }
+  // x ticks
+  const ticks = xTicks || Array.from({length:5}, (_,i)=>({pos:i/4,label:formatTick(xMin + i/4*spanX)}));
+  ticks.forEach(t=>{
+    const x = left + t.pos*(w-left-right);
+    ctx.strokeStyle='#e5e9f2';
+    ctx.beginPath(); ctx.moveTo(x, h-bottom); ctx.lineTo(x, h-bottom+4); ctx.stroke();
+    ctx.fillStyle='#6b778c';
+    ctx.fillText(t.label, x-6, h-bottom+16);
+  });
 }
 function drawBarChart(canvas,data,labels,opts={}){
-  const ctx=canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  drawAxes(ctx, canvas.width, canvas.height);
+  const {ctx,w,h} = ensureCanvasSize(canvas);
+  ctx.clearRect(0,0,w,h);
   const max = Math.max(...data,0);
   const min = Math.min(...data,0);
   const span = max-min || 1;
-  const barW = (canvas.width-80)/data.length;
+  const yMin = min>0?0:min;
+  const yMax = max<0?0:max;
+  drawAxes(ctx, w, h, {yMin, yMax, xTicks: []});
+  const barW = (w-AXIS.left-AXIS.right)/data.length;
   data.forEach((v,i)=>{
-    const x = 50 + i*barW;
-    const y0 = canvas.height-30;
-    const y = y0 - (v-min)/span*(canvas.height-70);
+    const x = AXIS.left + i*barW;
+    const y0 = h-AXIS.bottom;
+    const y = y0 - (v-min)/span*(h-AXIS.bottom-AXIS.top);
     ctx.fillStyle = opts.colors?opts.colors[i%opts.colors.length]: '#2c7be5';
     ctx.fillRect(x, Math.min(y,y0), barW*0.6, Math.abs(y0-y));
     ctx.fillStyle = '#555';
-    ctx.fillText(labels[i], x, canvas.height-12);
-    ctx.fillText(v.toFixed(0), x, y-4);
+    ctx.fillText(labels[i], x, h-12);
+    ctx.fillText(v.toFixed(0), x, Math.min(y,y0)-6);
   });
   if(opts.title){ctx.fillStyle='#111'; ctx.font='12px sans-serif'; ctx.fillText(opts.title, 10,14); ctx.font='10px sans-serif';}
 }
 function drawLineChart(canvas, series, opts={}){
-  const ctx=canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  drawAxes(ctx, canvas.width, canvas.height);
+  const {ctx,w,h} = ensureCanvasSize(canvas);
+  ctx.clearRect(0,0,w,h);
   const max=Math.max(...series.flatMap(s=>s.data),0);
   const min=Math.min(...series.flatMap(s=>s.data),0);
   const span=max-min||1;
   const n=Math.max(...series.map(s=>s.data.length));
+  const yMin = min>0?0:min;
+  const yMax = max<0?0:max;
+  const ticks = (opts.xLabels||[]).length ? (()=>{
+    const labs=opts.xLabels; const count=Math.min(6,labs.length);
+    const res=[];
+    for(let i=0;i<count;i++){
+      const idx=Math.round(i*(labs.length-1)/(count-1||1));
+      res.push({pos: n>1? idx/(n-1):0, label: labs[idx]});
+    }
+    return res;
+  })():null;
+  drawAxes(ctx, w, h, {yMin,yMax,xTicks:ticks});
   series.forEach((s,idx)=>{
     ctx.beginPath();
     ctx.strokeStyle=opts.colors?opts.colors[idx%opts.colors.length]:`hsl(${idx*60},70%,50%)`;
     s.data.forEach((v,i)=>{
-      const x=50 + (canvas.width-80)*(i/(n-1||1));
-      const y=canvas.height-30 - (v-min)/span*(canvas.height-70);
+      const x=AXIS.left + (w-AXIS.left-AXIS.right)*(i/(n-1||1));
+      const y=h-AXIS.bottom - (v-min)/span*(h-AXIS.bottom-AXIS.top);
       if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     });
     ctx.stroke();
-    ctx.fillText(s.label, canvas.width-80, 20+idx*12);
+    ctx.fillText(s.label, w-80, 20+idx*12);
   });
-  if(opts.title){ctx.fillStyle='#111';ctx.fillText(opts.title,10,14);}
+  if(opts.title){ctx.fillStyle='#111';ctx.fillText(opts.title,10,14);}  
 }
 function drawHeatmap(canvas, matrix, xLabels, yLabels, opts={}){
-  const ctx=canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const {ctx,w,h} = ensureCanvasSize(canvas);
+  ctx.clearRect(0,0,w,h);
   const rows = matrix.length, cols = matrix[0].length;
-  const cellW = (canvas.width-80)/cols; const cellH=(canvas.height-60)/rows;
+  const cellW = (w-80)/cols; const cellH=(h-60)/rows;
   matrix.forEach((r,ri)=>{
     r.forEach((v,ci)=>{
       const hue = 200 - 120*(v>0); // blue/green/red mix
@@ -510,38 +616,42 @@ function drawHeatmap(canvas, matrix, xLabels, yLabels, opts={}){
       ctx.fillStyle='#111'; ctx.fillText(v.toFixed(0), x+4, y+12);
     });
   });
-  xLabels.forEach((l,i)=>ctx.fillText(l, 50+i*cellW, canvas.height-8));
+  xLabels.forEach((l,i)=>ctx.fillText(l, 50+i*cellW, h-8));
   yLabels.forEach((l,i)=>ctx.fillText(l, 10, 28+i*cellH));
   if(opts.title){ctx.fillStyle='#111';ctx.fillText(opts.title,10,14);}
 }
 function drawHistogram(canvas, data, opts={}){
-  const ctx=canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  drawAxes(ctx, canvas.width, canvas.height);
+  const {ctx,w,h} = ensureCanvasSize(canvas);
+  ctx.clearRect(0,0,w,h);
   if(!data.length){ctx.fillText('无模拟结果',20,20);return;}
   const bins=20; const min=Math.min(...data); const max=Math.max(...data); const span=max-min||1;
   const counts=Array(bins).fill(0);
   data.forEach(v=>{let idx=Math.floor((v-min)/span*bins); idx=Math.min(bins-1,Math.max(0,idx)); counts[idx]++;});
-  const barW=(canvas.width-80)/bins; const maxC=Math.max(...counts,1);
+  const barW=(w-AXIS.left-AXIS.right)/bins; const maxC=Math.max(...counts,1);
+  const xTicks = Array.from({length:5},(_,i)=>{
+    const pos=i/4; const val=min + pos*span;
+    return {pos, label: formatTick(val)};
+  });
+  drawAxes(ctx, w, h, {yMin:0, yMax:maxC, xMin:min, xMax:max, xTicks});
   counts.forEach((c,i)=>{
-    const x=50+i*barW; const h=(canvas.height-70)*(c/maxC);
+    const x=AXIS.left+i*barW; const hBar=(h-AXIS.bottom-AXIS.top)*(c/maxC);
     ctx.fillStyle='#2c7be5';
-    ctx.fillRect(x, canvas.height-30-h, barW*0.9, h);
+    ctx.fillRect(x, h-AXIS.bottom-hBar, barW*0.9, hBar);
   });
   ctx.fillStyle='#111'; ctx.fillText(opts.title||'直方图',10,14);
 }
 function drawTimeline(canvas, segments, horizon=24){
-  const ctx=canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const {ctx,w,h} = ensureCanvasSize(canvas);
+  ctx.clearRect(0,0,w,h);
   const barH=30; const colors={'full':'#2c7be5','cut':'#7fb3ff','standby':'#f0b429','arbitration':'#5cc9a7','unemploy':'#dfe3ec'};
-  let x=40; const unit=(canvas.width-80)/horizon;
+  let x=40; const unit=(w-80)/horizon;
   segments.forEach(seg=>{
     ctx.fillStyle=colors[seg.type]||'#ccc';
     ctx.fillRect(x,40,unit*seg.len,barH);
     ctx.fillStyle='#111'; ctx.fillText(seg.label, x+2, 60);
     x+=unit*seg.len;
   });
-  ctx.strokeStyle='#aaa'; ctx.beginPath(); ctx.moveTo(40,40+barH+6); ctx.lineTo(canvas.width-40,40+barH+6); ctx.stroke();
+  ctx.strokeStyle='#aaa'; ctx.beginPath(); ctx.moveTo(40,40+barH+6); ctx.lineTo(w-40,40+barH+6); ctx.stroke();
   ctx.fillText('时间轴(月)',10,20);
 }
 
@@ -555,17 +665,18 @@ function renderCharts(summaries){
   const timeline = selSummary.summary.rows;
   const months = timeline.map(r=>`M${r.month}`);
   const netData = timeline.map(r=>r.disposable);
-  drawLineChart(document.getElementById('chartCashflow'), [{label:'净现金流', data: netData}], {title:'月度净现金流'});
+  drawLineChart(document.getElementById('chartCashflow'), [{label:'净现金流', data: netData}], {title:'月度净现金流', xLabels: months});
   const cum = []; timeline.reduce((a,b)=>{const v=a+b.disposable; cum.push(v); return v;},0);
-  drawLineChart(document.getElementById('chartCumulative'), [{label:'累计', data:cum}], {title:'累计现金流'});
+  drawLineChart(document.getElementById('chartCumulative'), [{label:'累计', data:cum}], {title:'累计现金流', xLabels: months});
 
   const payoffParts=[
     timeline.reduce((a,b)=>a+b.net,0),
     timeline.reduce((a,b)=>a+b.employerBenefit,0),
     timeline.reduce((a,b)=>a+b.lump,0),
-    -timeline.reduce((a,b)=>a+b.livingCost+b.selfPay+b.oppCost,0)
+    -timeline.reduce((a,b)=>a+b.selfPay,0),
+    -timeline.reduce((a,b)=>a+b.oppCost,0)
   ];
-  drawBarChart(document.getElementById('chartPayoff'), payoffParts, ['净薪资','社保公积金','仲裁补偿','生活/成本'], {title:'现金流构成', colors:['#2c7be5','#5cc9a7','#f0b429','#c0392b']});
+  drawBarChart(document.getElementById('chartPayoff'), payoffParts, ['净薪资','雇主公积金','仲裁补偿','自付社保','机会成本'], {title:'现金流构成', colors:['#2c7be5','#5cc9a7','#f0b429','#c0392b','#7f8c8d']});
 
   const heatMatrix = [
     [ -2,-1,0,1,2,3 ],
@@ -596,38 +707,47 @@ function renderCharts(summaries){
     return {id:o.s.id,q:[q(0.05),q(0.25),q(0.5),q(0.75),q(0.95)]};
   });
   const boxData = quantiles.flatMap((o)=> o.q.map(v=>v));
-  drawLineChart(document.getElementById('chartQuantiles'), quantiles.map(o=>({label:o.id,data:o.q})), {title:'情景分布对比'});
+  drawLineChart(document.getElementById('chartQuantiles'), quantiles.map(o=>({label:o.id,data:o.q})), {title:'情景分布对比', xLabels:['P5','P25','P50','P75','P95']});
 
   const negatives = summaries.map(o=>o.summary.negatives);
   drawBarChart(document.getElementById('chartNegative'), negatives, labels, {title:'负现金流月数', colors:['#c0392b']});
 
+  const horizon = scenarioHorizon(selSummary.s, params);
+  const payMonths = selSummary.s.fullSalaryMonths + selSummary.s.salaryCutMonths + selSummary.s.standbyMonths;
+  const waitLen = Math.max(0, horizon - payMonths);
   const segs = [
     {type:'full', len:selSummary.s.fullSalaryMonths, label:'全薪'},
     {type:'cut', len:selSummary.s.salaryCutMonths, label:'降薪'},
     {type:'standby', len:selSummary.s.standbyMonths, label:'待岗'},
-    {type:'arbitration', len:1, label:'仲裁'},
-    {type:'unemploy', len: Math.max(1, 24 - selSummary.s.fullSalaryMonths - selSummary.s.salaryCutMonths - selSummary.s.standbyMonths -1), label:'失业'}
+    {type:'arbitration', len:waitLen, label: waitLen>0 ? `仲裁等待(${waitLen}月)` : '终结'}
   ];
-  drawTimeline(document.getElementById('chartTimeline'), segs, 24);
+  drawTimeline(document.getElementById('chartTimeline'), segs, horizon);
 
   const scatter = summaries.map(o=>({id:o.s.id, x:o.summary.std, y:o.summary.npv}));
-  const ctx = document.getElementById('chartScatter').getContext('2d');
-  const canvas = document.getElementById('chartScatter');
-  ctx.clearRect(0,0,canvas.width,canvas.height); drawAxes(ctx,canvas.width,canvas.height);
-  const maxX=Math.max(...scatter.map(p=>p.x),1); const maxY=Math.max(...scatter.map(p=>p.y),1);
+  const scatterCanvas = document.getElementById('chartScatter');
+  const {ctx:ctxS,w:ws,h:hs} = ensureCanvasSize(scatterCanvas);
+  const rawMaxX=Math.max(...scatter.map(p=>p.x),1); const rawMinX=Math.min(...scatter.map(p=>p.x),0);
+  const rawMaxY=Math.max(...scatter.map(p=>p.y),1); const rawMinY=Math.min(...scatter.map(p=>p.y),0);
+  const padX = (rawMaxX - rawMinX || 1)*0.1; const padY = (rawMaxY - rawMinY || 1)*0.1;
+  const maxX = rawMaxX + padX; const minX = rawMinX - padX;
+  const maxY = rawMaxY + padY; const minY = rawMinY - padY;
+  const xTicks = Array.from({length:6}, (_,i)=>({pos:i/5,label:formatTick(minX + (maxX-minX)*i/5)}));
+  ctxS.clearRect(0,0,ws,hs);
+  drawAxes(ctxS,ws,hs,{xMin:minX, xMax:maxX, yMin:minY, yMax:maxY, xTicks, yTicks:6});
   scatter.forEach((pt,i)=>{
-    const x=50 + (canvas.width-80)*(pt.x/maxX);
-    const y=canvas.height-30 - (pt.y/maxY)*(canvas.height-70);
-    ctx.fillStyle=`hsl(${i*60},70%,50%)`; ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle='#111'; ctx.fillText(pt.id, x+6, y-6);
+    const x=AXIS.left + (ws-AXIS.left-AXIS.right)*((pt.x-minX)/(maxX-minX||1));
+    const y=hs-AXIS.bottom - (pt.y-minY)/(maxY-minY||1)*(hs-AXIS.bottom-AXIS.top);
+    ctxS.fillStyle=`hsl(${i*60},70%,50%)`; ctxS.beginPath(); ctxS.arc(x,y,5,0,Math.PI*2); ctxS.fill();
+    ctxS.fillStyle='#111'; ctxS.fillText(pt.id, x+6, y-6);
   });
-  ctx.fillText('风险(标准差)',10,14);
+  ctxS.fillText('风险(标准差)',10,14);
 }
 
 function runMonteCarlo(s,p,sim=800){
   const results=[];
   const execDist=[{p:p.p_exec_0, v:0},{p:p.p_exec_25,v:0.25},{p:p.p_exec_50,v:0.5},{p:p.p_exec_75,v:0.75},{p:p.p_exec_100,v:1}];
   const outcome=outcomeMultipliers(p);
+  const supportFactor = expectedSupportFactor(p);
   function sampleDist(dist){
     const r=Math.random(); let c=0; for(const d of dist){c+=d.p; if(r<=c) return d.v;}
     return dist[dist.length-1].v;
@@ -637,11 +757,16 @@ function runMonteCarlo(s,p,sim=800){
     const pClone = {...p, discountRateAnnual: dr};
     const exec = sampleDist(execDist);
     const om = sampleDist(outcome.map(o=>({p:o.prob,v:o.mult})));
-    const sClone = {...s, executionSuccessRate: exec, arbitrationWinFactor: s.arbitrationWinFactor};
+    const sClone = {...s};
     const base = baseNValue(pClone);
-    const payout = base*(1+sClone.arbitrationExtraN)*om*exec*sClone.arbitrationWinFactor;
-    const rows = buildTimeline(sClone,pClone,24);
-    const npv = rows.reduce((a,b)=>a+b.discounted,0) + payout/Math.pow(1+dr/12, (s.arbitrationDurationMonths||1));
+    const wageMakeupRaw = Math.max(0, sClone.salaryCutMonths * (1 - sClone.salaryCutRatio) * pClone.monthlyGrossSalary)
+      + Math.max(0, sClone.standbyMonths * (pClone.monthlyGrossSalary - sClone.standbyMonthlyPay));
+    const payout = (base*om*exec + wageMakeupRaw*supportFactor*exec);
+    const timelineScenario = {...sClone, noLump:true};
+    const rows = buildTimeline(timelineScenario,pClone,scenarioHorizon(sClone,pClone));
+    const monthlyRate = Math.pow(1+dr, pClone.timeStepMonths/12) - 1;
+    const lumpDisc = 1/Math.pow(1+monthlyRate, (sClone.arbitrationDurationMonths||1)-1);
+    const npv = rows.reduce((a,b)=>a+b.discounted,0) + payout*lumpDisc;
     results.push(npv);
   }
   monteCarloResults[s.id]=results;
@@ -650,6 +775,7 @@ function runMonteCarlo(s,p,sim=800){
 function updateAll(){
   readParams();
   scenarios.forEach(s=>{ s.standbyMonthlyPay = params.monthlyGrossSalary*params.standbyRatio; });
+  renderScenarioTable();
   scenarios.forEach(s=>runMonteCarlo(s, params, 500));
   renderSummary();
 }
