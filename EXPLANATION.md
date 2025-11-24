@@ -31,11 +31,11 @@
   - `keepSocialSecurityDuringUnemployment` 与 `selfSocialSecurityCostPerMonth` 控制仲裁等待期是否自行续保及月成本。
 - **概率与贴现**：
   - `discountRateAnnual` 与 `timeStepMonths` 决定折现率；`riskAversionLambda` 用于指数效用和确定性等价计算。
-  - `p_*` 概率组描述仲裁获赔倍数的分布；`p_exec_*` 描述执行率分布，若场景未指定执行率则使用该期望值。
+- `p_*` 概率组描述仲裁获赔倍数的分布，自动加权得到“支持度”（期望倍数）；`p_exec_*` 描述执行率分布，自动加权得到期望执行率，两者均直接用于 DCF 无需手填。
 - **法律/补偿**：
   - `N_years`、`N_baseSalary`、`N_legalCapMultiple` 决定法定 N 的基数，`hasTwoNCase` / `twoN_maxMultiple` 仅影响 2N 情形的封顶。
-  - `arbitrationDurationMonths` 为仲裁结算月（总期数=发薪期+仲裁等待期）。
-  - `arbitrationWinFactor` 表示证据强度/支持度，`executionSuccessRate` 为场景层面的执行成功率（优先级高于全局）。降薪/待岗工资补回自动按支持度×执行率计入仲裁月。
+- `arbitrationDurationMonths` 为仲裁结算月（总期数=发薪期+仲裁等待期）。
+- 降薪/待岗工资补回自动按“支持度（赔付档概率加权倍数）× 执行率（执行档概率加权）”计入仲裁月，无需手填支持度/执行率。
 - **失业与机会成本**：
   - `expectedInJobMonths` 设定继续发薪的预期月数并参与期限截断（现按“发薪期 + 仲裁等待期”截断）。
   - `expectedReemploymentIncome` 和 `unemploymentOpportunityCostFactor` 决定机会成本扣减（完结即停）。
@@ -45,8 +45,8 @@
 ## 场景表与参数映射
 - **全薪月 / 降薪比 / 降薪月 / 待岗月 / 待岗支付** → 决定 `gross` 的阶段收入，进入税后计算；差额自动计入“降薪/待岗补回”，再乘支持度与执行率。
 - **仲裁月** → 决定一次性补偿 `lump` 的折现时点；不再单独设置“仲裁概率”或额外 N。
-- **支持度** → 映射为 `arbitrationWinFactor`，调节仲裁胜率或证据强度。
-- **执行率** → 使用场景内的 `executionSuccessRate`，若未填则退回全局执行概率期望 `expectedExecutionFactor`。
+- **支持度** → 由赔付档概率自动加权成期望倍数并用于仲裁补偿与工资补回。
+- **执行率** → 由执行档概率自动加权成期望执行率并用于仲裁补偿与工资补回。
 
 ## 关键公式的代码锚点
 - `calcAfterTaxIncome`：奖金并入毛收入后再扣五险一金与有效税率，得到 `net`。
