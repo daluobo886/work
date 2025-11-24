@@ -489,22 +489,58 @@ function ensureCanvasSize(canvas){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   return {ctx,w,h};
 }
-function drawAxes(ctx, w, h){
+const AXIS = { left: 50, right: 10, bottom: 30, top: 20 };
+
+function formatTick(v){
+  const abs = Math.abs(v);
+  if(abs >= 100000) return (v/1000).toFixed(0) + 'k';
+  if(abs >= 1000) return v.toFixed(0);
+  if(abs >= 10) return v.toFixed(0);
+  if(abs >= 1) return v.toFixed(1);
+  return v.toFixed(2);
+}
+
+function drawAxes(ctx, w, h, opts={}){
+  const {yMin=0, yMax=1, xMin=0, xMax=1, xTicks=null, yTicks=5} = opts;
+  const {left,right,bottom,top} = AXIS;
+  const spanY = (yMax - yMin) || 1;
+  const spanX = (xMax - xMin) || 1;
   ctx.strokeStyle = '#d0d7e2';
-  ctx.beginPath(); ctx.moveTo(40,h-30); ctx.lineTo(w-10,h-30); ctx.lineTo(w-10,20); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(left, h-bottom); ctx.lineTo(w-right, h-bottom); ctx.lineTo(w-right, top); ctx.stroke();
+  // y ticks
+  for(let i=0;i<=yTicks;i++){
+    const t = i/yTicks;
+    const y = h-bottom - t*(h-bottom-top);
+    const val = yMin + t*spanY;
+    ctx.strokeStyle='#e5e9f2';
+    ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(w-right, y); ctx.stroke();
+    ctx.fillStyle='#6b778c'; ctx.font='10px sans-serif';
+    ctx.fillText(formatTick(val), 4, y+3);
+  }
+  // x ticks
+  const ticks = xTicks || Array.from({length:5}, (_,i)=>({pos:i/4,label:formatTick(xMin + i/4*spanX)}));
+  ticks.forEach(t=>{
+    const x = left + t.pos*(w-left-right);
+    ctx.strokeStyle='#e5e9f2';
+    ctx.beginPath(); ctx.moveTo(x, h-bottom); ctx.lineTo(x, h-bottom+4); ctx.stroke();
+    ctx.fillStyle='#6b778c';
+    ctx.fillText(t.label, x-6, h-bottom+16);
+  });
 }
 function drawBarChart(canvas,data,labels,opts={}){
   const {ctx,w,h} = ensureCanvasSize(canvas);
   ctx.clearRect(0,0,w,h);
-  drawAxes(ctx, w, h);
   const max = Math.max(...data,0);
   const min = Math.min(...data,0);
   const span = max-min || 1;
-  const barW = (w-80)/data.length;
+  const yMin = min>0?0:min;
+  const yMax = max<0?0:max;
+  drawAxes(ctx, w, h, {yMin, yMax, xTicks: []});
+  const barW = (w-AXIS.left-AXIS.right)/data.length;
   data.forEach((v,i)=>{
-    const x = 50 + i*barW;
-    const y0 = h-30;
-    const y = y0 - (v-min)/span*(h-70);
+    const x = AXIS.left + i*barW;
+    const y0 = h-AXIS.bottom;
+    const y = y0 - (v-min)/span*(h-AXIS.bottom-AXIS.top);
     ctx.fillStyle = opts.colors?opts.colors[i%opts.colors.length]: '#2c7be5';
     ctx.fillRect(x, Math.min(y,y0), barW*0.6, Math.abs(y0-y));
     ctx.fillStyle = '#555';
@@ -516,23 +552,34 @@ function drawBarChart(canvas,data,labels,opts={}){
 function drawLineChart(canvas, series, opts={}){
   const {ctx,w,h} = ensureCanvasSize(canvas);
   ctx.clearRect(0,0,w,h);
-  drawAxes(ctx, w, h);
   const max=Math.max(...series.flatMap(s=>s.data),0);
   const min=Math.min(...series.flatMap(s=>s.data),0);
   const span=max-min||1;
   const n=Math.max(...series.map(s=>s.data.length));
+  const yMin = min>0?0:min;
+  const yMax = max<0?0:max;
+  const ticks = (opts.xLabels||[]).length ? (()=>{
+    const labs=opts.xLabels; const count=Math.min(6,labs.length);
+    const res=[];
+    for(let i=0;i<count;i++){
+      const idx=Math.round(i*(labs.length-1)/(count-1||1));
+      res.push({pos: n>1? idx/(n-1):0, label: labs[idx]});
+    }
+    return res;
+  })():null;
+  drawAxes(ctx, w, h, {yMin,yMax,xTicks:ticks});
   series.forEach((s,idx)=>{
     ctx.beginPath();
     ctx.strokeStyle=opts.colors?opts.colors[idx%opts.colors.length]:`hsl(${idx*60},70%,50%)`;
     s.data.forEach((v,i)=>{
-      const x=50 + (w-80)*(i/(n-1||1));
-      const y=h-30 - (v-min)/span*(h-70);
+      const x=AXIS.left + (w-AXIS.left-AXIS.right)*(i/(n-1||1));
+      const y=h-AXIS.bottom - (v-min)/span*(h-AXIS.bottom-AXIS.top);
       if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     });
     ctx.stroke();
     ctx.fillText(s.label, w-80, 20+idx*12);
   });
-  if(opts.title){ctx.fillStyle='#111';ctx.fillText(opts.title,10,14);}
+  if(opts.title){ctx.fillStyle='#111';ctx.fillText(opts.title,10,14);}  
 }
 function drawHeatmap(canvas, matrix, xLabels, yLabels, opts={}){
   const {ctx,w,h} = ensureCanvasSize(canvas);
@@ -557,16 +604,20 @@ function drawHeatmap(canvas, matrix, xLabels, yLabels, opts={}){
 function drawHistogram(canvas, data, opts={}){
   const {ctx,w,h} = ensureCanvasSize(canvas);
   ctx.clearRect(0,0,w,h);
-  drawAxes(ctx, w, h);
   if(!data.length){ctx.fillText('无模拟结果',20,20);return;}
   const bins=20; const min=Math.min(...data); const max=Math.max(...data); const span=max-min||1;
   const counts=Array(bins).fill(0);
   data.forEach(v=>{let idx=Math.floor((v-min)/span*bins); idx=Math.min(bins-1,Math.max(0,idx)); counts[idx]++;});
-  const barW=(w-80)/bins; const maxC=Math.max(...counts,1);
+  const barW=(w-AXIS.left-AXIS.right)/bins; const maxC=Math.max(...counts,1);
+  const xTicks = Array.from({length:5},(_,i)=>{
+    const pos=i/4; const val=min + pos*span;
+    return {pos, label: formatTick(val)};
+  });
+  drawAxes(ctx, w, h, {yMin:0, yMax:maxC, xMin:min, xMax:max, xTicks});
   counts.forEach((c,i)=>{
-    const x=50+i*barW; const hBar=(h-70)*(c/maxC);
+    const x=AXIS.left+i*barW; const hBar=(h-AXIS.bottom-AXIS.top)*(c/maxC);
     ctx.fillStyle='#2c7be5';
-    ctx.fillRect(x, h-30-hBar, barW*0.9, hBar);
+    ctx.fillRect(x, h-AXIS.bottom-hBar, barW*0.9, hBar);
   });
   ctx.fillStyle='#111'; ctx.fillText(opts.title||'直方图',10,14);
 }
@@ -595,9 +646,9 @@ function renderCharts(summaries){
   const timeline = selSummary.summary.rows;
   const months = timeline.map(r=>`M${r.month}`);
   const netData = timeline.map(r=>r.disposable);
-  drawLineChart(document.getElementById('chartCashflow'), [{label:'净现金流', data: netData}], {title:'月度净现金流'});
+  drawLineChart(document.getElementById('chartCashflow'), [{label:'净现金流', data: netData}], {title:'月度净现金流', xLabels: months});
   const cum = []; timeline.reduce((a,b)=>{const v=a+b.disposable; cum.push(v); return v;},0);
-  drawLineChart(document.getElementById('chartCumulative'), [{label:'累计', data:cum}], {title:'累计现金流'});
+  drawLineChart(document.getElementById('chartCumulative'), [{label:'累计', data:cum}], {title:'累计现金流', xLabels: months});
 
   const payoffParts=[
     timeline.reduce((a,b)=>a+b.net,0),
@@ -637,7 +688,7 @@ function renderCharts(summaries){
     return {id:o.s.id,q:[q(0.05),q(0.25),q(0.5),q(0.75),q(0.95)]};
   });
   const boxData = quantiles.flatMap((o)=> o.q.map(v=>v));
-  drawLineChart(document.getElementById('chartQuantiles'), quantiles.map(o=>({label:o.id,data:o.q})), {title:'情景分布对比'});
+  drawLineChart(document.getElementById('chartQuantiles'), quantiles.map(o=>({label:o.id,data:o.q})), {title:'情景分布对比', xLabels:['P5','P25','P50','P75','P95']});
 
   const negatives = summaries.map(o=>o.summary.negatives);
   drawBarChart(document.getElementById('chartNegative'), negatives, labels, {title:'负现金流月数', colors:['#c0392b']});
@@ -654,11 +705,13 @@ function renderCharts(summaries){
   const scatter = summaries.map(o=>({id:o.s.id, x:o.summary.std, y:o.summary.npv}));
   const scatterCanvas = document.getElementById('chartScatter');
   const {ctx:ctxS,w:ws,h:hs} = ensureCanvasSize(scatterCanvas);
-  ctxS.clearRect(0,0,ws,hs); drawAxes(ctxS,ws,hs);
-  const maxX=Math.max(...scatter.map(p=>p.x),1); const maxY=Math.max(...scatter.map(p=>p.y),1);
+  const maxX=Math.max(...scatter.map(p=>p.x),1); const minX=Math.min(...scatter.map(p=>p.x),0);
+  const maxY=Math.max(...scatter.map(p=>p.y),1); const minY=Math.min(...scatter.map(p=>p.y),0);
+  ctxS.clearRect(0,0,ws,hs);
+  drawAxes(ctxS,ws,hs,{xMin:minX, xMax:maxX, yMin:minY, yMax:maxY, xTicks:null});
   scatter.forEach((pt,i)=>{
-    const x=50 + (ws-80)*(pt.x/maxX);
-    const y=hs-30 - (pt.y/maxY)*(hs-70);
+    const x=AXIS.left + (ws-AXIS.left-AXIS.right)*((pt.x-minX)/(maxX-minX||1));
+    const y=hs-AXIS.bottom - (pt.y-minY)/(maxY-minY||1)*(hs-AXIS.bottom-AXIS.top);
     ctxS.fillStyle=`hsl(${i*60},70%,50%)`; ctxS.beginPath(); ctxS.arc(x,y,5,0,Math.PI*2); ctxS.fill();
     ctxS.fillStyle='#111'; ctxS.fillText(pt.id, x+6, y-6);
   });
