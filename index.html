@@ -174,6 +174,7 @@
         <li><strong>奖金（monthlyBonusSmoothed）</strong>：平滑到每月的税前奖金，直接加在当月毛收入上；未填时视为 0。</li>
         <li><strong>每月折现因子</strong>：代码使用 <code>monthlyRate = (1+yearlyRate)^(timeStep/12)-1</code>，折现 <code>disc = 1 / (1 + monthlyRate)^(m-1)</code>。若时间步为 1 个月，两式与 <code>1 / (1 + yearlyRate)^((m-1)/12)</code> 等价；当前写法可兼容非常用的时间步。</li>
         <li><strong>现金流公式</strong>：<code>税后收入(net) + 公积金入账(employerBenefit) + 仲裁一次性补偿(lump) − 自付社保(selfPay) − 机会成本(oppCost)</code>。仲裁补偿含：法定 N 期望值 × 支持度 × 执行率 + 自动计算的降薪/待岗工资补回（同样乘以支持度与执行率），在仲裁结算当月全额计入；机会成本按“事项未完结”逐月扣除，仲裁等待期才会出现续保成本。</li>
+        <li><strong>待岗扣缴</strong>：待岗月社保/公积金由公司全额承担（含个人份额），员工侧不扣五险一金，公积金入账仍按基数计算加入收益。</li>
         <li><strong>场景表列对应</strong>：
           <ul style="margin:6px 0 0 14px; padding:0; list-style:circle;">
             <li>全薪月/降薪比/降薪月/待岗月/待岗支付：控制 <code>gross</code> 的阶段性收入。</li>
@@ -283,8 +284,8 @@ function readParams(){
   Object.assign(params, p);
 }
 
-function calcEmployeeContrib(p, gross){
-  if(gross<=0) return 0;
+function calcEmployeeContrib(p, gross, {isStandby=false}={}){
+  if(gross<=0 || isStandby) return 0;
   const effectiveSocialBase = Math.min(gross, p.socialBase);
   const effectiveHousingBase = Math.min(gross, p.housingBase);
   const social = effectiveSocialBase * (p.pensionEmployeeRate + p.medicalEmployeeRate + p.unemploymentEmployeeRate);
@@ -298,9 +299,9 @@ function calcEmployerBenefit(p, gross){
 function calcHousingFundValue(p){
   return p.housingBase * (p.housingEmployeeRate + p.housingEmployerRate);
 }
-function calcAfterTaxIncome(p, gross){
+function calcAfterTaxIncome(p, gross, opts={}){
   const bonus = p.monthlyBonusSmoothed || 0;
-  const contrib = calcEmployeeContrib(p, gross);
+  const contrib = calcEmployeeContrib(p, gross, opts);
   const taxable = Math.max(0, gross + bonus - contrib - p.standardDeduction - p.specialDeduction - p.otherPreTaxDeduction);
   const tax = taxable * p.approxEffectiveTaxRate;
   return gross + bonus - contrib - tax;
@@ -402,7 +403,8 @@ function buildTimeline(s, p, horizon=scenarioHorizon(s, p)){
     else if(m<=s.fullSalaryMonths + s.salaryCutMonths + s.standbyMonths) gross = s.standbyMonthlyPay;
     else gross = 0;
 
-    const net = calcAfterTaxIncome(p, gross);
+    const isStandby = m> s.fullSalaryMonths + s.salaryCutMonths && m<=s.fullSalaryMonths + s.salaryCutMonths + s.standbyMonths;
+    const net = calcAfterTaxIncome(p, gross, {isStandby});
     const employerBenefit = calcEmployerBenefit(p, gross);
     const inArbitrationWait = m>payMonths && m<=horizon;
     const selfPay = (inArbitrationWait && p.keepSocialSecurityDuringUnemployment)? p.selfSocialSecurityCostPerMonth : 0;
